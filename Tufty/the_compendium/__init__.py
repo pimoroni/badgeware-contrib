@@ -4,7 +4,6 @@ import math
 import os
 import random
 import sys
-import time
 
 
 sys.path.insert(0, "/system/apps/01compendium")
