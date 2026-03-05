@@ -6,8 +6,8 @@ import random
 import sys
 
 
-sys.path.insert(0, "/system/apps/01compendium")
-os.chdir("/system/apps/01compendium")
+sys.path.insert(0, "/system/apps/the_compendium")
+os.chdir("/system/apps/the_compendium")
 import cutscene
 import dialogue
 import level
