@@ -175,7 +175,7 @@ def pbox(x, y, w, h, c):
 
 # ── Backgrounds ──────────────────────────────────────────────────────────────
 
-def draw_bg(tn, th):
+def draw_bg(tn, _th):
     """Draw a subtle animated background based on theme name."""
     t = badge.ticks / 1000
     if tn == "neon":

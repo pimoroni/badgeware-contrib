@@ -514,6 +514,10 @@ class DrMario:
         self._spawn_pill()
         self.last_gravity = badge.ticks
 
+    def new_level(self):
+        """Set up a new level with fresh viruses."""
+        self._place_viruses()
+
     def countdown_num(self):
         el = badge.ticks - self.countdown_start
         if el < 600:

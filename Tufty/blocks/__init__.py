@@ -161,7 +161,7 @@ def update():
 
     elif game.state == GS.LEVEL_CLEAR:
         if badge.pressed(BUTTON_B):
-            dr._place_viruses()
+            dr.new_level()
             dr.begin_play()
 
     elif game.state == GS.MENU:
