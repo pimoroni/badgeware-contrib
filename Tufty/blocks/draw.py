@@ -1,7 +1,7 @@
 """
-Rendering for Tetris and Dr. Mario.
+Rendering for Blocks and Pill Drop.
 
-Tetris uses theme colours. Dr. Mario uses fixed colours (red/blue/yellow)
+Blocks uses theme colours. Pill Drop uses fixed colours (red/blue/yellow)
 regardless of theme, because the gameplay depends on colour recognition.
 """
 
@@ -16,7 +16,7 @@ SW = screen.width
 SH = screen.height
 CELL = 11
 
-# Tetris board: centred
+# Blocks board: centred
 T_BW = COLS * CELL
 T_BH = ROWS * CELL
 T_BX = (SW - T_BW) // 2
@@ -111,7 +111,7 @@ def _val(t, x, w, y, c):
 # ── Block drawing ────────────────────────────────────────────────────────────
 
 def draw_block(x, y, pt, th, sz=CELL):
-    """Draw a themed Tetris block."""
+    """Draw a themed block."""
     pc = th["pc"].get(pt)
     if pc is None:
         screen.pen = color.rgb(80, 80, 80)
@@ -130,7 +130,7 @@ def draw_block(x, y, pt, th, sz=CELL):
 
 
 def draw_virus(x, y, ci, sz=CELL):
-    """Draw a Dr. Mario virus with eyes. ci = colour index 0-2."""
+    """Draw a virus with eyes. ci = colour index 0-2."""
     screen.pen = DR_COLORS[ci]
     screen.shape(shape.rectangle(x, y, sz, sz))
     screen.pen = DR_COLORS_HI[ci]
@@ -145,7 +145,7 @@ def draw_virus(x, y, ci, sz=CELL):
 
 
 def draw_pill_cell(x, y, ci, sz=CELL):
-    """Draw a Dr. Mario pill half. ci = colour index 0-2."""
+    """Draw a pill half. ci = colour index 0-2."""
     screen.pen = DR_COLORS[ci]
     screen.shape(shape.rounded_rectangle(x, y, sz, sz, 3))
     screen.pen = DR_COLORS_HI[ci]
@@ -153,7 +153,7 @@ def draw_pill_cell(x, y, ci, sz=CELL):
 
 
 def draw_mini(pt, cx, cy, th, cs=7):
-    """Draw a small Tetris piece preview."""
+    """Draw a small piece preview."""
     if pt is None:
         return
     cells = PIECES[pt][0]
@@ -232,7 +232,7 @@ def draw_bg(tn, _th):
             screen.shape(shape.rectangle(x, y, 10, 10))
 
 
-# ── Tetris rendering ────────────────────────────────────────────────────────
+# ── Blocks rendering ────────────────────────────────────────────────────────
 
 def draw_tetris_board(g, th):
     bx, by = T_BX, T_BY
@@ -331,7 +331,7 @@ def draw_tetris_panels(g, th):
     screen.shape(shape.rectangle(rx + 4, ly + 62, fill, 4))
 
 
-# ── Dr. Mario rendering ─────────────────────────────────────────────────────
+# ── Pill Drop rendering ─────────────────────────────────────────────────────
 
 def draw_dr_board(g):
     bx, by = D_BX, D_BY
@@ -445,7 +445,7 @@ def draw_title(th, tn, game_sel, stats):
     x2 = CX + gap // 2
     by = 50
 
-    for i, (x, name) in enumerate([(x1, "TETRIS"), (x2, "DR.MARIO")]):
+    for i, (x, name) in enumerate([(x1, "BLOCKS"), (x2, "PILL DROP")]):
         if i == game_sel:
             screen.pen = th["pbr"]
             screen.shape(shape.rounded_rectangle(x, by, bw, bh, 5))
@@ -469,7 +469,7 @@ def draw_title(th, tn, game_sel, stats):
 
     screen.font = small_font
     screen.pen = th["lbl"]
-    hs = "Best: {} / Dr: {}".format(stats.high_score, stats.dr_high)
+    hs = "Best: {} / PD: {}".format(stats.high_score, stats.dr_high)
     screen.text(hs, _cx(hs), SH - 36)
     screen.pen = th["grd"]
     screen.text("A+B pause  A+C hold", _cx("A+B pause  A+C hold"), SH - 22)
@@ -526,9 +526,9 @@ def draw_stats(stats, th, tn):
     stc("STATS", 12, True, th)
     screen.font = small_font
     items = [
-        ("Tetris Best", str(stats.high_score)),
-        ("Dr.Mario Best", str(stats.dr_high)),
-        ("Dr.Mario Level", str(stats.dr_best_level)),
+        ("Blocks Best", str(stats.high_score)),
+        ("Pill Drop Best", str(stats.dr_high)),
+        ("Pill Drop Level", str(stats.dr_best_level)),
         ("Games", str(stats.total_games)),
         ("Lines", str(stats.total_lines)),
         ("Best Combo", str(stats.best_combo)),

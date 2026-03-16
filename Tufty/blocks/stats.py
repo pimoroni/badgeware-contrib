@@ -1,5 +1,5 @@
 """
-Persistent stats for Tetris and Dr. Mario.
+Persistent stats for Blocks and Pill Drop.
 
 Uses the Badgeware State API to save/load between sessions.
 """
@@ -56,8 +56,8 @@ class Stats:
         self.session_start = badge.ticks
         self.total_games += 1
 
-    def end_tetris(self, score, lines):
-        """Record end of a Tetris game."""
+    def end_blocks(self, score, lines):
+        """Record end of a Blocks game."""
         self.total_time_ms += badge.ticks - self.session_start
         self.total_lines += lines
         if score > self.high_score:
@@ -68,7 +68,7 @@ class Stats:
             self.best_b2b = self.session_b2b
         self.save()
 
-    def end_dr(self, score, level):
+    def end_pd(self, score, level):
         """Record end of a Dr. Mario game."""
         self.total_time_ms += badge.ticks - self.session_start
         if score > self.dr_high:

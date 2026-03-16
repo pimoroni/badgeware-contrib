@@ -1,8 +1,8 @@
 """
-Game logic for Tetris and Dr. Mario.
+Game logic for Blocks and Pill Drop.
 
-Tetris: SRS rotation, wall kicks, 7-bag, hold, ghost, back-to-back, combos.
-Dr. Mario: 3-colour viruses, 2-cell pills, match-4, chain gravity, level progression.
+Blocks: SRS rotation, wall kicks, 7-bag, hold, ghost, back-to-back, combos.
+Pill Drop: 3-colour viruses, 2-cell pills, match-4, chain gravity, level progression.
 """
 
 import random
@@ -105,7 +105,7 @@ DR_TOTAL = DR_ROWS + DR_HIDDEN
 
 
 def gravity_ms(level):
-    """Gravity delay in ms for a given Tetris level."""
+    """Gravity delay in ms for a given Blocks level."""
     return SPEEDS[level] if level < len(SPEEDS) else 33
 
 
@@ -170,10 +170,10 @@ class TopOutAnim:
         return self.progress() >= 1.0
 
 
-# ── Tetris ───────────────────────────────────────────────────────────────────
+# ── Blocks ───────────────────────────────────────────────────────────────────
 
-class Tetris:
-    """Classic Tetris with SRS, hold, ghost, back-to-back, combos."""
+class Blocks:
+    """Classic falling blocks with SRS, hold, ghost, back-to-back, combos."""
 
     def __init__(self, stats):
         self.stats = stats
@@ -258,7 +258,7 @@ class Tetris:
         if self.collides(self.piece, self.piece_rot, self.piece_x, self.piece_y):
             self.topout_anim = TopOutAnim()
             self.state = GS.TOP_OUT
-            self.stats.end_tetris(self.score, self.lines)
+            self.stats.end_blocks(self.score, self.lines)
 
     def rotate(self, d):
         old = self.piece_rot
@@ -328,7 +328,7 @@ class Tetris:
             n = len(full)
             sc = LINE_SCORES.get(n, 800) * (self.level + 1)
 
-            # Back-to-back Tetris bonus
+            # Back-to-back Blocks bonus
             if n == 4:
                 self.b2b += 1
                 if self.b2b > 1:
@@ -342,10 +342,10 @@ class Tetris:
             self.score += sc
 
             # Score popup
-            names = {1: "SINGLE", 2: "DOUBLE", 3: "TRIPLE", 4: "TETRIS!"}
+            names = {1: "SINGLE", 2: "DOUBLE", 3: "TRIPLE", 4: "QUAD!"}
             txt = names.get(n, "")
             if n == 4 and self.b2b > 1:
-                txt = "B2B TETRIS!"
+                txt = "B2B QUAD!"
             if txt:
                 self.popup = (txt, badge.ticks)
 
@@ -404,11 +404,11 @@ class Tetris:
         return False
 
 
-# ── Dr. Mario ────────────────────────────────────────────────────────────────
+# ── Pill Drop ────────────────────────────────────────────────────────────────
 
-class DrMario:
+class PillDrop:
     """
-    Dr. Mario: clear viruses by matching 4+ of the same colour.
+    Pill Drop: clear viruses by matching 4+ of the same colour.
 
     Board cells:
       None    = empty
@@ -538,7 +538,7 @@ class DrMario:
         if self._collides(self.pill_x, self.pill_y, self.pill_rot):
             self.topout_anim = TopOutAnim(DR_TOTAL)
             self.state = GS.TOP_OUT
-            self.stats.end_dr(self.score, self.level)
+            self.stats.end_pd(self.score, self.level)
 
     def pill_cells(self, px, py, rot):
         """Return ((r1, c1), (r2, c2)) for the two pill halves."""

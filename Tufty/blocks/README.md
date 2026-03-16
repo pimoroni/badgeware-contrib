@@ -1,4 +1,4 @@
-# Tetris & Dr. Mario
+# Blocks & Pill Drop
 
 Two classic puzzle games for the Tufty 2350.
 
@@ -6,9 +6,9 @@ Two classic puzzle games for the Tufty 2350.
 
 ## Games
 
-**Tetris** — Classic Tetris with SRS rotation, wall kicks, 7-bag randomiser, ghost piece, hold, back-to-back Tetris bonus, and combo tracking.
+**Blocks** — Classic Blocks with SRS rotation, wall kicks, 7-bag randomiser, ghost piece, hold, back-to-back Blocks bonus, and combo tracking.
 
-**Dr. Mario** — Clear viruses by matching 4 of the same colour. Pills are two-coloured capsules that you stack and rotate. Chains cascade when floating pill halves drop into new matches. Clear all viruses to advance to the next level.
+**Pill Drop** — Clear viruses by matching 4 of the same colour. Pills are two-coloured capsules that you stack and rotate. Chains cascade when floating pill halves drop into new matches. Clear all viruses to advance to the next level.
 
 ## Controls
 
@@ -20,17 +20,17 @@ Two classic puzzle games for the Tufty 2350.
 | DOWN | Soft drop |
 | B | Hard drop / Start |
 | A+B | Pause |
-| A+C | Hold piece (Tetris only) |
+| A+C | Hold piece (Blocks only) |
 
 ## Features
 
 - 10 colour themes (random on each launch, changeable from pause menu)
 - Persistent high scores and stats
 - 3-2-1 countdown before play
-- Score popups (SINGLE, DOUBLE, TRIPLE, TETRIS!, B2B TETRIS!)
+- Score popups (SINGLE, DOUBLE, TRIPLE, BLOCKS!, B2B BLOCKS!)
 - Danger zone warning when your stack gets high
 - Top-out animation on game over
-- Dr. Mario uses fixed red/blue/yellow colours regardless of theme
+- Pill Drop uses fixed red/blue/yellow colours regardless of theme
 
 ## Installing
 
@@ -39,7 +39,7 @@ Copy the `tetris` folder into `/system/apps/` on your Tufty 2350 (double-tap RES
 ## Files
 
 - `__init__.py` — App entry point, input handling, state machine
-- `game.py` — Tetris and Dr. Mario game logic
+- `game.py` — Blocks and Pill Drop game logic
 - `draw.py` — All rendering code
 - `themes.py` — 10 colour theme definitions
 - `stats.py` — Persistent stats tracking

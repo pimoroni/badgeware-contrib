@@ -1,11 +1,11 @@
 """
-Tetris & Dr. Mario for Tufty 2350 / Badgeware
+Blocks & Pill Drop for Tufty 2350 / Badgeware
 
 Controls:
   A = Move left          C = Move right
   UP = Rotate            DOWN = Soft drop
   B = Hard drop / Start  A+B = Pause
-  A+C = Hold piece (Tetris only)
+  A+C = Hold piece (Blocks only)
 
 Title: A/C to pick game, B to start.
 Pause menu: Theme, Stats, Quit.
@@ -24,7 +24,7 @@ sys.path.insert(0, APP_DIR)
 # Set HIRES before importing draw (it reads screen dimensions at module level)
 badge.mode(HIRES)
 
-from game import Tetris, DrMario, GS
+from game import Blocks, PillDrop, GS
 from stats import Stats
 from themes import get_theme, get_theme_names, THEME_LIST
 from draw import (
@@ -46,12 +46,12 @@ stats.load()
 tn = THEME_LIST[random.randint(0, len(THEME_LIST) - 1)]
 theme = get_theme(tn)
 
-tetris = Tetris(stats)
-dr = DrMario(stats)
+blocks = Blocks(stats)
+pd = PillDrop(stats)
 
-game_sel = 0       # 0 = Tetris, 1 = Dr. Mario
-game = tetris       # currently active game
-is_dr = False
+game_sel = 0       # 0 = Blocks, 1 = Pill Drop
+game = blocks       # currently active game
+is_pd = False
 pause_sel = 0
 theme_sel = 0
 theme_names = get_theme_names()
@@ -64,14 +64,14 @@ def reload_theme():
 
 
 def set_game(idx):
-    global game, is_dr, game_sel
+    global game, is_pd, game_sel
     game_sel = idx
     if idx == 0:
-        game = tetris
-        is_dr = False
+        game = blocks
+        is_pd = False
     else:
-        game = dr
-        is_dr = True
+        game = pd
+        is_pd = True
 
 
 # ── Input ────────────────────────────────────────────────────────────────────
@@ -89,9 +89,9 @@ def handle_play():
         game.state = GS.MENU
         return
 
-    # A+C = Hold (Tetris only)
-    if not is_dr and ((ah and cp) or (ch and ap)):
-        tetris.hold()
+    # A+C = Hold (Blocks only)
+    if not is_pd and ((ah and cp) or (ch and ap)):
+        blocks.hold()
         return
 
     if badge.pressed(BUTTON_UP):
@@ -121,8 +121,8 @@ def handle_play():
                     game.move(1, 0)
 
     game.gravity_tick()
-    if not is_dr:
-        tetris.update_danger()
+    if not is_pd:
+        blocks.update_danger()
 
 
 # ── Main loop ────────────────────────────────────────────────────────────────
@@ -138,10 +138,10 @@ def update():
         if badge.pressed(BUTTON_C):
             set_game((game_sel + 1) % 2)
         if badge.pressed(BUTTON_B):
-            if is_dr:
-                dr.start()
+            if is_pd:
+                pd.start()
             else:
-                tetris.start()
+                blocks.start()
 
     elif game.state == GS.PLAYING:
         handle_play()
@@ -161,8 +161,8 @@ def update():
 
     elif game.state == GS.LEVEL_CLEAR:
         if badge.pressed(BUTTON_B):
-            dr.new_level()
-            dr.begin_play()
+            pd.new_level()
+            pd.begin_play()
 
     elif game.state == GS.MENU:
         if badge.pressed(BUTTON_UP):
@@ -180,10 +180,10 @@ def update():
             elif item == "Stats":
                 game.state = GS.STATS_VIEW
             elif item == "Quit":
-                if is_dr:
-                    stats.end_dr(dr.score, dr.level)
+                if is_pd:
+                    stats.end_pd(pd.score, pd.level)
                 else:
-                    stats.end_tetris(tetris.score, tetris.lines)
+                    stats.end_blocks(blocks.score, blocks.lines)
                 game.state = GS.TITLE
         if badge.pressed(BUTTON_A):
             game.state = GS.PLAYING
@@ -210,10 +210,10 @@ def update():
 
     elif game.state == GS.GAME_OVER:
         if badge.pressed(BUTTON_B):
-            if is_dr:
-                dr.start()
+            if is_pd:
+                pd.start()
             else:
-                tetris.start()
+                blocks.start()
         if badge.pressed(BUTTON_A):
             game.state = GS.TITLE
 
@@ -231,35 +231,35 @@ def update():
         draw_stats(stats, theme, tn)
         return
 
-    # Gameplay screens — Dr. Mario uses fixed bg, Tetris uses theme
-    if is_dr:
+    # Gameplay screens — Pill Drop uses fixed bg, Blocks uses theme
+    if is_pd:
         screen.pen = DR_BG
         screen.clear()
-        draw_dr_board(dr)
+        draw_dr_board(pd)
         if game.state == GS.LINE_CLEAR:
-            draw_dr_line_anim(dr)
+            draw_dr_line_anim(pd)
         elif game.state in (GS.PLAYING, GS.MENU, GS.COUNTDOWN):
-            draw_dr_pill(dr)
-        draw_dr_panels(dr)
-        draw_popup(dr, D_BX, D_BY, D_BW, D_BH)
+            draw_dr_pill(pd)
+        draw_dr_panels(pd)
+        draw_popup(pd, D_BX, D_BY, D_BW, D_BH)
     else:
         screen.pen = theme["bg"]
         screen.clear()
         draw_bg(tn, theme)
-        draw_tetris_board(tetris, theme)
+        draw_tetris_board(blocks, theme)
         if game.state == GS.LINE_CLEAR:
-            draw_tetris_line_anim(tetris, theme)
+            draw_tetris_line_anim(blocks, theme)
         elif game.state in (GS.PLAYING, GS.MENU, GS.COUNTDOWN):
-            draw_tetris_piece(tetris, theme)
-        draw_tetris_panels(tetris, theme)
-        draw_popup(tetris, T_BX, T_BY, T_BW, T_BH)
+            draw_tetris_piece(blocks, theme)
+        draw_tetris_panels(blocks, theme)
+        draw_popup(blocks, T_BX, T_BY, T_BW, T_BH)
 
     # Overlays
     if game.state == GS.COUNTDOWN:
-        bx = D_BX if is_dr else T_BX
-        bw = D_BW if is_dr else T_BW
-        by = D_BY if is_dr else T_BY
-        bh = D_BH if is_dr else T_BH
+        bx = D_BX if is_pd else T_BX
+        bw = D_BW if is_pd else T_BW
+        by = D_BY if is_pd else T_BY
+        bh = D_BH if is_pd else T_BH
         num = game.countdown_num()
         if num > 0:
             screen.pen = color.rgb(0, 0, 0, 140)
@@ -268,19 +268,19 @@ def update():
     elif game.state == GS.MENU:
         draw_pause(theme, pause_sel)
     elif game.state in (GS.GAME_OVER, GS.TOP_OUT):
-        draw_gameover(game, stats, is_dr)
+        draw_gameover(game, stats, is_pd)
     elif game.state == GS.LEVEL_CLEAR:
-        draw_level_clear(dr)
+        draw_level_clear(pd)
 
 
 def on_exit():
     # Only save stats if mid-game (not already saved by game over)
     if game.state in (GS.PLAYING, GS.COUNTDOWN, GS.LINE_CLEAR, GS.MENU,
                        GS.THEME_SELECT, GS.STATS_VIEW):
-        if is_dr:
-            stats.end_dr(dr.score, dr.level)
+        if is_pd:
+            stats.end_pd(pd.score, pd.level)
         else:
-            stats.end_tetris(tetris.score, tetris.lines)
+            stats.end_blocks(blocks.score, blocks.lines)
     stats.save()
 
 

@@ -1,8 +1,8 @@
 """
-Colour themes for Tetris.
+Colour themes for Blocks.
 
-Each theme defines the full palette needed for Tetris rendering.
-Dr. Mario uses its own fixed colours and ignores themes.
+Each theme defines the full palette needed for Blocks rendering.
+Pill Drop uses its own fixed colours and ignores themes.
 """
 
 
