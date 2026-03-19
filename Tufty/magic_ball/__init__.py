@@ -81,9 +81,10 @@ def center_text(image, text, y_spacing):
     y += 5
 
     for word in words:
+        word = word.upper()
         w, _ = image.measure_text(word)
         x = (image.width / 2) - (w / 2)
-        image.text(word.upper(), x, y)
+        image.text(word, x, y)
         y += y_spacing
 
 
