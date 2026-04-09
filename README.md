@@ -19,12 +19,12 @@ You can learn more about Badgeware (or buy a badge of your own!) at [badgewa.re]
 5) Eject the badge from your computer (once the files have finished copying).
 6) The new app should now be showing in the launcher 🎉
 
-## How to contribute apps
+## How to contribute an app
 
 1) Create a fork of this repo
 2) Create a new directory for your app
 3) Add your app's `__init__.py` to the directory. 
 4) Don't forget to include a 24x24 icon for the launcher.
-5) Add a 'readme.md' if your app needs additional instructions.
+5) Add a readme if your app needs additional instructions.
 6) Submit a Pull Request so we can admire your creation
-7) Make more apps 🎉
+7) Make more apps! 🎉
