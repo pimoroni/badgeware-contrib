@@ -43,5 +43,5 @@ def update():
         badge.update()
         badge.caselights(1)
         time.sleep(1)
-        wifi.tick() 
+        wifi.tick()
 run(update)
