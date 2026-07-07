@@ -27,7 +27,7 @@ BUTTON_NAMES = {
 page = 0
 light_samples = []
 last_light_sample = 0
-press_counts = {button: 0 for button in BUTTONS}
+press_counts = dict.fromkeys(BUTTONS, 0)
 initial_caselights = badge.caselights()
 selected_light = 0
 
