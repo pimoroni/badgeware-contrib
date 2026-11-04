@@ -1,0 +1,5 @@
+# Personal profiles and logos stay local
+/badge.json
+/assets/logos/*
+!/assets/logos/example.png
+!/assets/logos/README.txt
