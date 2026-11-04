@@ -4,9 +4,3 @@ secrets.py
 # Python cache
 __pycache__/
 *.pyc
-
-# Multi Badge: personal profiles and logos stay local
-/Tufty/multi_badge/badge.json
-/Tufty/multi_badge/assets/logos/*
-!/Tufty/multi_badge/assets/logos/example.png
-!/Tufty/multi_badge/assets/logos/README.txt
