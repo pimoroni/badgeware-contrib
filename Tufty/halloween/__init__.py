@@ -5,14 +5,14 @@ import math
 import random
 import time
 
-VERSION = '1.1'
-APP_DIR = '/system/apps/halloween'
+VERSION = "1.1"
+APP_DIR = "/system/apps/halloween"
 ANIMATION_STEP_MS = 40
 FRAME_MS = ANIMATION_STEP_MS
 RANDOM_BOO_MIN_MS = 45000
 RANDOM_BOO_MAX_MS = 150000
 BOO_DURATION_MS = 2400
-CHARACTERS = ('ghost', 'bats', 'spider', 'pumpkin', 'skull')
+CHARACTERS = ("ghost", "bats", "spider", "pumpkin", "skull")
 MESSAGE_COUNT = 8
 SPRITE_COUNTS = (10, 10, 10, 30, 10)
 SCARE_FRAMES = BOO_DURATION_MS // ANIMATION_STEP_MS
@@ -26,35 +26,35 @@ badge.default_clear = None
 
 
 # BEGIN ARTWORK INDEX
-ASSETS = {'night': (0, 20627, 320, 240), 'background': (20627, 32575, 320, 240), 'face-0': (53202, 6957, 98, 61), 'face-1': (60159, 7024, 98, 61), 'face-2': (67183, 7029, 98, 61), 'face-3': (74212, 7060, 98, 61), 'face-4': (81272, 7085, 98, 61), 'face-5': (88357, 7102, 98, 61), 'face-6': (95459, 7127, 98, 61), 'face-7': (102586, 7160, 98, 61), 'ghost-0': (109746, 2851, 38, 47), 'ghost-1': (112597, 2899, 38, 47), 'ghost-2': (115496, 2851, 38, 47), 'message-0': (118347, 8113, 296, 28), 'message-1': (126460, 7752, 296, 28), 'message-2': (134212, 8365, 296, 28), 'message-3': (142577, 7858, 296, 28), 'message-4': (150435, 9067, 296, 28), 'message-5': (159502, 8208, 296, 28), 'message-6': (167710, 8517, 296, 28), 'message-7': (176227, 9216, 296, 28), 'controls': (185443, 5433, 320, 21), 'controls-paused': (190876, 5040, 320, 21), 'boo-word': (195916, 3739, 92, 31), 'scare-ghost-0': (199655, 5459, 82, 99), 'scare-bats-0': (205114, 2835, 64, 38), 'scare-spider-0': (207949, 7294, 88, 72), 'scare-skull-0': (215243, 4955, 70, 83), 'scare-ghost-1': (220198, 6151, 82, 99), 'scare-bats-1': (226349, 2383, 64, 38), 'scare-spider-1': (228732, 6829, 88, 72), 'scare-skull-1': (235561, 4948, 70, 83), 'scare-ghost-2': (240509, 6315, 82, 99), 'scare-bats-2': (246824, 2249, 64, 38), 'scare-spider-2': (249073, 6351, 88, 72), 'scare-skull-2': (255424, 4947, 70, 83), 'scare-ghost-3': (260371, 6315, 82, 99), 'scare-bats-3': (266686, 2249, 64, 38), 'scare-spider-3': (268935, 6206, 88, 72), 'scare-skull-3': (275141, 4947, 70, 83), 'scare-ghost-4': (280088, 6151, 82, 99), 'scare-bats-4': (286239, 2383, 64, 38), 'scare-spider-4': (288622, 6629, 88, 72), 'scare-skull-4': (295251, 4948, 70, 83), 'scare-ghost-5': (300199, 5459, 82, 99), 'scare-bats-5': (305658, 2835, 64, 38), 'scare-spider-5': (308493, 7054, 88, 72), 'scare-skull-5': (315547, 4955, 70, 83), 'scare-ghost-6': (320502, 6183, 82, 99), 'scare-bats-6': (326685, 2694, 64, 38), 'scare-spider-6': (329379, 7989, 88, 72), 'scare-skull-6': (337368, 4915, 70, 83), 'scare-ghost-7': (342283, 6221, 82, 99), 'scare-bats-7': (348504, 2931, 64, 38), 'scare-spider-7': (351435, 7872, 88, 72), 'scare-skull-7': (359307, 4862, 70, 83), 'scare-ghost-8': (364169, 6283, 82, 99), 'scare-bats-8': (370452, 2931, 64, 38), 'scare-spider-8': (373383, 7982, 88, 72), 'scare-skull-8': (381365, 4862, 70, 83), 'scare-ghost-9': (386227, 6183, 82, 99), 'scare-bats-9': (392410, 2694, 64, 38), 'scare-spider-9': (395104, 7969, 88, 72), 'scare-skull-9': (403073, 4915, 70, 83), 'scare-pumpkin-0': (407988, 16155, 136, 123), 'scare-pumpkin-1': (424143, 17161, 136, 123), 'scare-pumpkin-2': (441304, 17278, 136, 123), 'scare-pumpkin-3': (458582, 17300, 136, 123), 'scare-pumpkin-4': (475882, 17486, 136, 123), 'scare-pumpkin-5': (493368, 17577, 136, 123), 'scare-pumpkin-6': (510945, 17559, 136, 123), 'scare-pumpkin-7': (528504, 17665, 136, 123), 'scare-pumpkin-8': (546169, 17665, 136, 123), 'scare-pumpkin-9': (563834, 17559, 136, 123), 'scare-pumpkin-10': (581393, 17577, 136, 123), 'scare-pumpkin-11': (598970, 17486, 136, 123), 'scare-pumpkin-12': (616456, 17300, 136, 123), 'scare-pumpkin-13': (633756, 17278, 136, 123), 'scare-pumpkin-14': (651034, 17161, 136, 123), 'scare-pumpkin-15': (668195, 16155, 136, 123), 'scare-pumpkin-16': (684350, 17188, 136, 123), 'scare-pumpkin-17': (701538, 17163, 136, 123), 'scare-pumpkin-18': (718701, 17182, 136, 123), 'scare-pumpkin-19': (735883, 17272, 136, 123), 'scare-pumpkin-20': (753155, 17235, 136, 123), 'scare-pumpkin-21': (770390, 17322, 136, 123), 'scare-pumpkin-22': (787712, 17288, 136, 123), 'scare-pumpkin-23': (805000, 17288, 136, 123), 'scare-pumpkin-24': (822288, 17322, 136, 123), 'scare-pumpkin-25': (839610, 17235, 136, 123), 'scare-pumpkin-26': (856845, 17272, 136, 123), 'scare-pumpkin-27': (874117, 17182, 136, 123), 'scare-pumpkin-28': (891299, 17163, 136, 123), 'scare-pumpkin-29': (908462, 17188, 136, 123)}
+ASSETS = {"night": (0, 20627, 320, 240), "background": (20627, 32575, 320, 240), "face-0": (53202, 6957, 98, 61), "face-1": (60159, 7024, 98, 61), "face-2": (67183, 7029, 98, 61), "face-3": (74212, 7060, 98, 61), "face-4": (81272, 7085, 98, 61), "face-5": (88357, 7102, 98, 61), "face-6": (95459, 7127, 98, 61), "face-7": (102586, 7160, 98, 61), "ghost-0": (109746, 2851, 38, 47), "ghost-1": (112597, 2899, 38, 47), "ghost-2": (115496, 2851, 38, 47), "message-0": (118347, 8113, 296, 28), "message-1": (126460, 7752, 296, 28), "message-2": (134212, 8365, 296, 28), "message-3": (142577, 7858, 296, 28), "message-4": (150435, 9067, 296, 28), "message-5": (159502, 8208, 296, 28), "message-6": (167710, 8517, 296, 28), "message-7": (176227, 9216, 296, 28), "controls": (185443, 5433, 320, 21), "controls-paused": (190876, 5040, 320, 21), "boo-word": (195916, 3739, 92, 31), "scare-ghost-0": (199655, 5459, 82, 99), "scare-bats-0": (205114, 2835, 64, 38), "scare-spider-0": (207949, 7294, 88, 72), "scare-skull-0": (215243, 4955, 70, 83), "scare-ghost-1": (220198, 6151, 82, 99), "scare-bats-1": (226349, 2383, 64, 38), "scare-spider-1": (228732, 6829, 88, 72), "scare-skull-1": (235561, 4948, 70, 83), "scare-ghost-2": (240509, 6315, 82, 99), "scare-bats-2": (246824, 2249, 64, 38), "scare-spider-2": (249073, 6351, 88, 72), "scare-skull-2": (255424, 4947, 70, 83), "scare-ghost-3": (260371, 6315, 82, 99), "scare-bats-3": (266686, 2249, 64, 38), "scare-spider-3": (268935, 6206, 88, 72), "scare-skull-3": (275141, 4947, 70, 83), "scare-ghost-4": (280088, 6151, 82, 99), "scare-bats-4": (286239, 2383, 64, 38), "scare-spider-4": (288622, 6629, 88, 72), "scare-skull-4": (295251, 4948, 70, 83), "scare-ghost-5": (300199, 5459, 82, 99), "scare-bats-5": (305658, 2835, 64, 38), "scare-spider-5": (308493, 7054, 88, 72), "scare-skull-5": (315547, 4955, 70, 83), "scare-ghost-6": (320502, 6183, 82, 99), "scare-bats-6": (326685, 2694, 64, 38), "scare-spider-6": (329379, 7989, 88, 72), "scare-skull-6": (337368, 4915, 70, 83), "scare-ghost-7": (342283, 6221, 82, 99), "scare-bats-7": (348504, 2931, 64, 38), "scare-spider-7": (351435, 7872, 88, 72), "scare-skull-7": (359307, 4862, 70, 83), "scare-ghost-8": (364169, 6283, 82, 99), "scare-bats-8": (370452, 2931, 64, 38), "scare-spider-8": (373383, 7982, 88, 72), "scare-skull-8": (381365, 4862, 70, 83), "scare-ghost-9": (386227, 6183, 82, 99), "scare-bats-9": (392410, 2694, 64, 38), "scare-spider-9": (395104, 7969, 88, 72), "scare-skull-9": (403073, 4915, 70, 83), "scare-pumpkin-0": (407988, 16155, 136, 123), "scare-pumpkin-1": (424143, 17161, 136, 123), "scare-pumpkin-2": (441304, 17278, 136, 123), "scare-pumpkin-3": (458582, 17300, 136, 123), "scare-pumpkin-4": (475882, 17486, 136, 123), "scare-pumpkin-5": (493368, 17577, 136, 123), "scare-pumpkin-6": (510945, 17559, 136, 123), "scare-pumpkin-7": (528504, 17665, 136, 123), "scare-pumpkin-8": (546169, 17665, 136, 123), "scare-pumpkin-9": (563834, 17559, 136, 123), "scare-pumpkin-10": (581393, 17577, 136, 123), "scare-pumpkin-11": (598970, 17486, 136, 123), "scare-pumpkin-12": (616456, 17300, 136, 123), "scare-pumpkin-13": (633756, 17278, 136, 123), "scare-pumpkin-14": (651034, 17161, 136, 123), "scare-pumpkin-15": (668195, 16155, 136, 123), "scare-pumpkin-16": (684350, 17188, 136, 123), "scare-pumpkin-17": (701538, 17163, 136, 123), "scare-pumpkin-18": (718701, 17182, 136, 123), "scare-pumpkin-19": (735883, 17272, 136, 123), "scare-pumpkin-20": (753155, 17235, 136, 123), "scare-pumpkin-21": (770390, 17322, 136, 123), "scare-pumpkin-22": (787712, 17288, 136, 123), "scare-pumpkin-23": (805000, 17288, 136, 123), "scare-pumpkin-24": (822288, 17322, 136, 123), "scare-pumpkin-25": (839610, 17235, 136, 123), "scare-pumpkin-26": (856845, 17272, 136, 123), "scare-pumpkin-27": (874117, 17182, 136, 123), "scare-pumpkin-28": (891299, 17163, 136, 123), "scare-pumpkin-29": (908462, 17188, 136, 123)}
 # END ARTWORK INDEX
 
 
-def asset(name):
+def asset(artwork, name):
     offset, length, width, height = ASSETS[name]
     artwork.seek(offset)
     data = artwork.read(length)
     if len(data) != length:
-        raise ValueError('Incomplete art.bin')
+        raise ValueError("Incomplete art.bin")
     sprite = image.load(data)
     if (sprite.width, sprite.height) != (width, height):
-        raise ValueError('Artwork size mismatch')
+        raise ValueError("Artwork size mismatch")
     return sprite
 
 
 # The Christmas badge also uses one blob with an offset/length artwork index.
 # Keep PNG payloads here so Tufty's full colour and alpha edges stay intact.
-with open(APP_DIR + '/art.bin', 'rb') as artwork:
-    background = asset('background')
-    night = asset('night')
-    faces = tuple(asset('face-' + str(i)) for i in range(8))
-    ghosts = tuple(asset('ghost-' + str(i)) for i in range(3))
-    messages = tuple(asset('message-' + str(i)) for i in range(MESSAGE_COUNT))
-    controls = (asset('controls'), asset('controls-paused'))
-    scares = tuple(tuple(asset('scare-' + name + '-' + str(i))
+with open(APP_DIR + "/art.bin", "rb") as artwork:
+    background = asset(artwork, "background")
+    night = asset(artwork, "night")
+    faces = tuple(asset(artwork, "face-" + str(i)) for i in range(8))
+    ghosts = tuple(asset(artwork, "ghost-" + str(i)) for i in range(3))
+    messages = tuple(asset(artwork, "message-" + str(i)) for i in range(MESSAGE_COUNT))
+    controls = (asset(artwork, "controls"), asset(artwork, "controls-paused"))
+    scares = tuple(tuple(asset(artwork, "scare-" + name + "-" + str(i))
                          for i in range(SPRITE_COUNTS[kind]))
                    for kind, name in enumerate(CHARACTERS))
-    boo_word = asset('boo-word')
+    boo_word = asset(artwork, "boo-word")
 del artwork
 ORIGIN = vec2(0, 0)
 FACE_POS = vec2(111, 104)
@@ -256,3 +256,4 @@ def main():
 
 
 main()
+
