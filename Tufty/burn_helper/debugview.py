@@ -47,20 +47,22 @@ def draw(link, tether, source, t, page=None):  # noqa: ARG001
                                     since(link.join_t0) // 1000), WARN)
     else:
         line("SCAN: %d NETWORKS VISIBLE" % link.scan_total, DIM)
-    shown = 0
-    for c in link.cands:
-        if shown >= 3:
-            break
-        if c["variant"] and not c["tries"]:
-            continue
-        shown += 1
-        info = link.seen.get(c["ssid"])
+    rows = [i for i, c in enumerate(link.cands) if not (c["variant"] and not c["tries"])]
+    first = 0
+    if link.pick in rows:                       # scroll so the cursor is in view
+        first = max(0, min(rows.index(link.pick) - 2, len(rows) - 3))
+    for i in rows[first:first + 3]:
+        c = link.cands[i]
+        info = link.seen.get(link.heard(c["ssid"]) or "")
         vis = "CH%d %d" % (info[1], info[0]) if info else ""
         trying = link.cur is not None and link.cands[link.cur] is c and link.state == "joining"
         res = "TRYING" if trying else SHORT.get(c["result"], c["result"] or "-")
         col = GOOD if res == "OK" else (WARN if res == "TRYING" else (DIM if res == "-" else BAD))
-        name = gfx.fit(c["ssid"] + ("*" if c["variant"] else ""), 58, f)
-        gfx.text(name, 3, y, FG, f)
+        picked = i == link.pick
+        if picked:
+            gfx.box(0, y - 1, 160, lh, (60, 52, 24))
+        name = gfx.fit(("> " if picked else "") + c["ssid"] + ("*" if c["variant"] else ""), 58, f)
+        gfx.text(name, 3, y, WARN if picked else FG, f)
         gfx.text(vis, 64, y, DIM, f)
         gfx.text(res, 157 - gfx.width(res, f), y, col, f)
         y += lh
@@ -75,4 +77,4 @@ def draw(link, tether, source, t, page=None):  # noqa: ARG001
     gfx.box(0, y - 2, 160, 120 - y + 2, (34, 28, 16))
     for r in rows:
         line(r, WARN)
-    gfx.text("UP:RESCAN A/C:PAGE B:NEXT" if page else "UP: RESCAN NOW   B: CLOSE", 3, 111, DIM, f)
+    gfx.text("UP:PICK A/C:PAGE B:NEXT" if page else "UP: PICK NETWORK  B: CLOSE", 3, 111, DIM, f)

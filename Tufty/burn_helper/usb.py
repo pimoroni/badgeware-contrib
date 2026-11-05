@@ -24,7 +24,10 @@ class UsbLink:
         self.page_req = None
         self.relay_req = None    # 1 = use the internet relay even at home (testing), 0 = back to normal
         self.key_req = None      # "A", "B", "C", "UP" or "DOWN": act as a short press (testing)
+        self.lost_req = None     # seconds: act as if the data stopped that long ago; -1 back to normal (testing)
+        self.pace_req = None     # a weekly pace object to show instead of the bridge's, or "off" (testing)
         self.demo_req = None
+        self.test_req = None     # "@STATE <name>": show a state for testing (est, nobridge, off), "normal" ends it
         try:
             self.poller = select.poll()
             self.poller.register(sys.stdin, select.POLLIN)
@@ -68,6 +71,9 @@ class UsbLink:
             except ValueError:
                 pass
             return
+        if line.startswith("@STATE "):
+            self.test_req = line[7:].strip().lower()
+            return
         if line.startswith("@RELAY "):
             try:
                 self.relay_req = int(line[7:].strip())
@@ -76,6 +82,24 @@ class UsbLink:
             return
         if line.startswith("@KEY "):
             self.key_req = line[5:].strip().upper()
+            return
+        if line.startswith("@LOST "):
+            try:
+                self.lost_req = int(line[6:].strip())
+            except ValueError:
+                pass
+            return
+        if line.startswith("@PACE "):
+            arg = line[6:].strip()
+            if arg == "off":
+                self.pace_req = "off"
+            else:
+                try:
+                    d = json.loads(arg)
+                except ValueError:
+                    return
+                if isinstance(d, dict):
+                    self.pace_req = d
             return
         if line.startswith("@PAGE "):
             try:

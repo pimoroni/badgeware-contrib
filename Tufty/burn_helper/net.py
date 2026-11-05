@@ -4,6 +4,7 @@
 # drop the badge into the firmware's fatal-error screen.
 
 import json
+import seal
 import socket
 import select
 import time
@@ -20,6 +21,17 @@ try:
 except (ImportError, AttributeError):
     EINPROGRESS = 115
     EAGAIN = 11
+# Phones put typographic quotes in network names ("Sam’s iPhone"); a name typed on another
+# keyboard has a plain one. Saved names match what is on the air with these made plain.
+_QUOTES = (("\u2019", "'"), ("\u2018", "'"), ("\u02bc", "'"), ("\u2032", "'"), ("\u201c", '"'), ("\u201d", '"'))
+
+
+def plain_quotes(s):
+    for a, b in _QUOTES:
+        s = s.replace(a, b)
+    return s
+
+
 BEACON_PORT = 47800
 POLL_MS = 2500
 HTTP_TIMEOUT_MS = 4000
@@ -27,6 +39,8 @@ JOIN_TIMEOUT_MS = 12000   # a right password joins in about 3 s; a wrong one han
 RETRY_ALL_MS = 15000
 FRESH_MS = 12000
 NO_BEACON_MS = 10000
+PICK_DELAY_MS = 1500      # after the last UP press on the Wi-Fi page, connect to the one picked
+PAIRED_GRACE_MS = 60000   # how long the paired bridge may be quiet before another one will do
 RELAY_POLL_MS = 5000      # the internet relay is polled less often than the bridge on the LAN
 LOG_FILE = "/state/burn_helper_net.log"
 LOG_MAX = 16384
@@ -41,6 +55,8 @@ STUCK = "never accepted the badge"
 NOT_SEEN = "not visible (5 GHz only / out of range?)"
 NO_IP = "joined but no IP address (DHCP)"
 FAILED = "connect failed"
+UNSEALED = "answer not sealed"    # taken for no bridge: an old bridge, or something else on the network
+NEEDS_KEY = "needs its key"      # the bridge seals its answers with a key this badge lacks: plug it into the bridge once
 
 
 def ticks():
@@ -54,7 +70,7 @@ def since(t0):
 class HttpGet:
     """One HTTP/1.0 GET, advanced a little on every step() call."""
 
-    def __init__(self, host, port, path):
+    def __init__(self, host, port, path, key=None):
         self.done = False
         self.ok = False
         self.body = None
@@ -62,6 +78,7 @@ class HttpGet:
         self.t0 = ticks()
         self.buf = b""
         self.sent = False
+        self.key = key            # the bridge's key: its answer comes sealed with it (seal.py)
         self.req = ("GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n" % (path, host)).encode()
         self.sock = None
         try:
@@ -130,8 +147,18 @@ class HttpGet:
         self.done = True
         head, _, body = self.buf.partition(b"\r\n\r\n")
         line = head.split(b"\r\n", 1)[0]
+        if b" 403" in line:
+            self.err = NEEDS_KEY
+            return
         if b" 200 " not in line + b" ":
             self.err = "HTTP " + line.decode()[:24]
+            return
+        if not seal.is_sealed(body):
+            self.err = UNSEALED
+            return
+        body = seal.unseal(self.key, body)
+        if body is None:                  # no key yet, or not this bridge's
+            self.err = NEEDS_KEY
             return
         try:
             self.body = json.loads(body)
@@ -143,7 +170,8 @@ class HttpGet:
 class Net:
     """Wi-Fi + bridge link with a diagnosis of every failure (see debug screen)."""
 
-    def __init__(self, networks, bridge=None, hostname="burn-helper", relay=None):
+    def __init__(self, networks, bridge=None, hostname="burn-helper", relay=None, last=None, on_join=None,
+                 paired=None, key=None):
         self.cands = []
         for n in networks:
             if not n or not n[0]:
@@ -156,8 +184,19 @@ class Net:
                 self.cands.append({"ssid": ssid, "psk": psk.strip(), "src": src, "variant": "trimmed",
                                    "result": "", "tries": 0})
         self.networks = self.cands            # truthy when anything is configured
+        self.last = last                       # the network that last worked: tried first
+        self.on_join = on_join                 # called with a network's name when it connects
+        self.order = list(range(len(self.cands)))   # the order to try them in (see _scan)
+        self.aired = {}                        # saved-style name -> the name as it is on the air
+        self.pick = None                       # the saved network the cursor is on (index into cands)
+        self.pick_t = 0
+        self.want = []                         # indices to try, only these, until one works or none can
+        self.paired = paired                   # id of the bridge this badge belongs to (learnt over USB)
+        self.paired_t = None                   # when its beacon was last heard
+        self.others = {}                       # other bridges heard on this network: host -> id
         self.fixed_bridge = bridge             # (host, port) or None
         self.bridge = bridge
+        self.key = key                         # the bridge's key, learned over USB, opens its sealed answers
         self.relay = relay                     # {"url", "key"} of the Mac's internet relay, or None
         self.rclient = None                    # relay.Client while the relay is in use
         self.rpoll_t0 = None
@@ -224,6 +263,9 @@ class Net:
     # -------------------------------------------------- public
     def tick(self):
         try:
+            if self.pick is not None and since(self.pick_t) > PICK_DELAY_MS:
+                i, self.pick = self.pick, None
+                self.connect_to(i)
             self._wifi()
             if self.state == "up":
                 self._discover()
@@ -282,13 +324,22 @@ class Net:
                     and since(self.up_t) > NO_BEACON_MS:
                 return ("On Wi-Fi but no bridge beacon: is the Mac on this same network? "
                         "Plug the badge into the Mac once to set up the internet relay.")
+            if self.bridge is not None and not self.fresh() and self.http_err == NEEDS_KEY:
+                return ("The bridge at %s wants its key: plug the badge into that computer's USB once."
+                        % self.bridge[0])
+            if self.bridge is not None and not self.fresh() and self.http_err == UNSEALED:
+                return ("%s answered without sealing, so the badge ignores it. Update the bridge, or check "
+                        "that this is your bridge." % self.bridge[0])
             if self.bridge is not None and not self.fresh() and self.http_err:
                 return "Bridge %s:%d not answering (%s)" % (self.bridge[0], self.bridge[1], self.http_err)
             if self.fresh():
+                if self.others:
+                    return ("Another bridge is on this network (%s). Only one computer should be the bridge: "
+                            "run the join line on that one." % list(self.others)[0])
                 return "All good."
             return "Connected, waiting for the bridge..."
         verdicts = [c for c in self.cands if c["result"]]
-        if self.seen is not None and self.scan_t is not None and not any(c["ssid"] in self.seen for c in self.cands):
+        if self.seen is not None and self.scan_t is not None and not any(self.heard(c["ssid"]) for c in self.cands):
             return "None of your networks are visible. Badge is 2.4 GHz only."
         for want in (BAD_PW, STUCK, NO_IP, FAILED):
             for c in verdicts:
@@ -324,9 +375,21 @@ class Net:
             return "REACHING THE RELAY..."
         if self.bridge is None:
             return "SEARCHING FOR BRIDGE..."
+        if self.http_err == NEEDS_KEY:
+            return "PLUG INTO BRIDGE FOR KEY"
+        if self.http_err == UNSEALED:
+            return "BRIDGE ANSWER NOT SEALED"
         if not self.fresh():
             return "BRIDGE NOT ANSWERING"
         return ""
+
+    def trouble(self):
+        """What label() is about, in a word, for the connection-lost screens' advice: wifi, relay or bridge."""
+        if self.state != "up":
+            return "wifi"
+        if self._use_relay():
+            return "relay"
+        return "key" if self.http_err == NEEDS_KEY else "bridge"
 
     def stop(self):
         self._close_udp()
@@ -344,14 +407,56 @@ class Net:
         self.state = "init" if self.cands else "none"
         self.note("wifi stopped")
 
+    def networks_list(self):
+        """Indices of the saved networks to show and pick from (a password variant is not a network)."""
+        return [i for i, c in enumerate(self.cands) if not c["variant"]]
+
+    def pick_next(self):
+        """UP on the Wi-Fi page: move the cursor to the next saved network. It connects there after
+        PICK_DELAY_MS with no further press. Starts on the first one."""
+        shown = self.networks_list()
+        if not shown:
+            return
+        nxt = shown[0] if self.pick not in shown else shown[(shown.index(self.pick) + 1) % len(shown)]
+        self.pick, self.pick_t = nxt, ticks()
+
+    def pick_cancel(self):
+        self.pick = None
+
+    def connect_to(self, i):
+        """Connect to saved network i now (leaving the current one), whatever order they are normally
+        tried in. If it can't be joined, the others are tried as usual."""
+        ssid = self.cands[i]["ssid"]
+        self.want = [j for j, c in enumerate(self.cands) if c["ssid"] == ssid]
+        self.note("you picked %s" % ssid)
+        for j in self.want:
+            self.cands[j]["result"] = ""
+        self._close_udp()
+        self._close_relay()
+        self.up_t = None
+        self.beacon_t = None
+        if self.wlan is not None:
+            try:
+                self.wlan.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
+        self.state = "scan" if self.wlan is not None else "init"
+
     def rescan(self):
         if self.state not in ("none", "up"):
             self.state = "scan"
+
+    def heard(self, ssid):
+        """The name a saved network is on the air under in the last scan (quotes can differ), or None."""
+        if ssid in self.seen:
+            return ssid
+        return self.aired.get(plain_quotes(ssid))
 
     # -------------------------------------------------- wifi
     def _scan(self):
         self.seen = {}
         self.best_bssid = {}
+        self.aired = {}
         try:
             res = self.wlan.scan()
         except Exception as e:  # noqa: BLE001
@@ -370,13 +475,18 @@ class Net:
                 self.best_bssid[name] = r[1]
             if old is None:
                 self.seen[name] = (r[3], r[2], 1)
+                self.aired[plain_quotes(name)] = name
             else:
                 best = old if old[0] >= r[3] else (r[3], r[2], 0)
                 self.seen[name] = (best[0], best[1], old[2] + 1)
         self.scan_t = ticks()
+        # the network that last worked first, then the saved order
+        last = plain_quotes(self.last) if self.last else None
+        self.order = sorted(range(len(self.cands)),
+                            key=lambda i: (0 if last and plain_quotes(self.cands[i]["ssid"]) == last else 1, i))
         mine = []
         for c in self.cands:
-            info = self.seen.get(c["ssid"])
+            info = self.seen.get(self.heard(c["ssid"]) or "")
             if c["variant"]:
                 continue
             if info:
@@ -386,17 +496,19 @@ class Net:
                 c["result"] = NOT_SEEN
         self.note("scan: %d networks; %s" % (self.scan_total, "; ".join(mine)))
 
-    def _next(self, start):
-        """Index of the next visible candidate at or after start, or None."""
-        for i in range(start, len(self.cands)):
-            if self.cands[i]["ssid"] in self.seen:
+    def _next(self, after=None):
+        """Index of the next visible candidate in try order after `after` (an index), or the first."""
+        order = self.want or self.order
+        start = 0 if after is None or after not in order else order.index(after) + 1
+        for i in order[start:]:
+            if self.heard(self.cands[i]["ssid"]) is not None:
                 return i
         return None
 
     def _join(self, i, pin=True):
         c = self.cands[i]
         self.cur = i
-        self.ssid = c["ssid"]
+        self.ssid = self.heard(c["ssid"]) or c["ssid"]     # join under the exact name on the air
         c["tries"] += 1
         self.attempts += 1
         try:
@@ -405,17 +517,17 @@ class Net:
             pass
         # Combined 2.4/5 GHz and mesh networks share one name: the radio only hears the 2.4 GHz
         # side, so aim at its strongest access point first, then let it pick any.
-        bssid = self.best_bssid.get(c["ssid"]) if pin else None
+        bssid = self.best_bssid.get(self.ssid) if pin else None
         self.pinned = bssid is not None
         try:
             if bssid is not None:
-                self.wlan.connect(c["ssid"], c["psk"], bssid=bssid)
+                self.wlan.connect(self.ssid, c["psk"], bssid=bssid)
             else:
-                self.wlan.connect(c["ssid"], c["psk"])
+                self.wlan.connect(self.ssid, c["psk"])
         except Exception as e:  # noqa: BLE001
             self.pinned = False
             self.note("pinned join not accepted (%r); joining by name" % (e,))
-            self.wlan.connect(c["ssid"], c["psk"])
+            self.wlan.connect(self.ssid, c["psk"])
         self.join_t0 = ticks()
         self.status = None
         self.state = "joining"
@@ -457,7 +569,11 @@ class Net:
             return
         if self.state == "scan":
             self._scan()
-            i = self._next(0)
+            i = self._next()
+            if i is None and self.want:
+                self.note("%s is not in range: back to the others" % self.cands[self.want[0]]["ssid"])
+                self.want = []
+                i = self._next()
             if i is None:
                 self.state = "down"
                 self.down_t0 = ticks()
@@ -488,14 +604,19 @@ class Net:
         verdict = self._verdict(st, timed_out)
         if verdict:
             c = self.cands[self.cur]
-            info = self.seen.get(c["ssid"])
+            info = self.seen.get(self.ssid)
             if self.pinned and verdict in (STUCK, FAILED) and info and info[2] > 1:
                 self.note("%s: strongest AP did not accept; trying any AP" % c["ssid"])
                 self._join(self.cur, pin=False)
                 return
             c["result"] = verdict
             self.note("%s: %s" % (c["ssid"], verdict))
-            nxt = self._next(self.cur + 1)
+            nxt = self._next(self.cur)
+            if nxt is None and self.want:
+                self.note("could not join the one you picked: back to the others")
+                self.want = []
+                self.state = "scan"
+                return
             if nxt is not None:
                 self._join(nxt)
             else:
@@ -509,6 +630,7 @@ class Net:
 
     def _up(self):
         self.state = "up"
+        self.want = []
         self.up_t = ticks()
         try:
             cfg = self.wlan.ifconfig()
@@ -518,6 +640,14 @@ class Net:
             self.ip = "?"
         if self.cur is not None:
             self.cands[self.cur]["result"] = OK
+            name = self.cands[self.cur]["ssid"]
+            if name != self.last:
+                self.last = name
+                if self.on_join is not None:
+                    try:
+                        self.on_join(name)
+                    except Exception:  # noqa: BLE001
+                        pass
         self.note("connected to %s: ip %s gateway %s" % (self.ssid, self.ip, self.gw))
 
     # -------------------------------------------------- diagnostics
@@ -531,12 +661,17 @@ class Net:
                 "joining" if self.state == "joining" else "last join", self.ssid, self.status,
                 STATUS_TEXT.get(self.status, "?"), since(self.join_t0) // 1000))
         for c in self.cands:
-            info = self.seen.get(c["ssid"])
+            info = self.seen.get(self.heard(c["ssid"]) or "")
             vis = "ch%d %ddBm x%d" % (info[1], info[0], info[2]) if info else "not seen"
             out.append("net %s%s [%s] pw %d chars%s | %s | tries %d | %s" % (
                 c["ssid"], " (trimmed)" if c["variant"] else "", c["src"] or "?", len(c["psk"]),
                 " ENDS WITH SPACE" if c["psk"] != c["psk"].rstrip() else "", vis, c["tries"], c["result"] or "-"))
         out.append("scan: %d networks visible" % self.scan_total)
+        if self.paired:
+            out.append("paired with bridge %s%s" % (self.paired, "" if self.paired_t is None else
+                                                    ", heard %ds ago" % (since(self.paired_t) // 1000)))
+        for host, bid in self.others.items():
+            out.append("another bridge at %s (id %s) ignored: run the join line there" % (host, bid or "?"))
         b = self.bridge
         out.append("bridge %s  beacon %s  last ok %s  http %s" % (
             "%s:%d" % b if b else "unknown",
@@ -580,16 +715,43 @@ class Net:
             except OSError:
                 return
             if data.startswith(b"TUFTYBRIDGE"):
+                parts = data.split()
                 try:
-                    port = int(data.split()[2])
+                    port = int(parts[2])
                 except Exception:  # noqa: BLE001
                     port = 8787
-                if self.beacon_t is None:
-                    self.note("heard bridge beacon from %r" % (addr,))
-                self.beacon_t = ticks()
-                if self.fixed_bridge is None:
-                    host = addr[0] if isinstance(addr, tuple) else socket.inet_ntop(socket.AF_INET, addr[4:8])
-                    self.bridge = (host, port)
+                bid = parts[3].decode() if len(parts) > 3 else ""
+                host = addr[0] if isinstance(addr, tuple) else socket.inet_ntop(socket.AF_INET, addr[4:8])
+                self._beacon(host, port, bid)
+
+    def _beacon(self, host, port, bid):
+        """A bridge announced itself. Stay with one bridge: the paired one when it is around, else
+        the one already in use while it keeps announcing itself, so two bridges on one network
+        can't pull the badge back and forth."""
+        if self.fixed_bridge is not None:
+            self.beacon_t = ticks()
+            return
+        mine = (host, port) == self.bridge
+        if self.paired and bid == self.paired:
+            self.paired_t = ticks()
+        elif self.paired and (self.paired_t is None or since(self.paired_t) < PAIRED_GRACE_MS) \
+                and (self.paired_t is not None or self.up_t is None or since(self.up_t) < PAIRED_GRACE_MS):
+            self._other(host, bid)          # not ours, and ours was heard lately (or may still be)
+            return
+        elif not mine and self.bridge is not None and self.beacon_t is not None \
+                and since(self.beacon_t) < NO_BEACON_MS:
+            self._other(host, bid)          # keep the one in use while it is still there
+            return
+        if not mine:
+            self.note("using the bridge at %s:%d%s" % (host, port, (" (id %s)" % bid) if bid else ""))
+        self.bridge = (host, port)
+        self.beacon_t = ticks()
+
+    def _other(self, host, bid):
+        if host not in self.others:
+            self.note("another bridge at %s%s: ignored (the badge talks to one bridge)"
+                      % (host, (" (id %s)" % bid) if bid else ""))
+        self.others[host] = bid
 
     # -------------------------------------------------- polling
     def _poll(self):
@@ -621,7 +783,7 @@ class Net:
         if self.poll_t0 is not None and since(self.poll_t0) < POLL_MS:
             return
         self.poll_t0 = ticks()
-        self.http = HttpGet(self.bridge[0], self.bridge[1], "/status" + self.extra_query)
+        self.http = HttpGet(self.bridge[0], self.bridge[1], "/status" + self.extra_query, self.key)
 
     def _poll_relay(self):
         """Away from home: the same status, over HTTPS through the Mac's Tailscale Funnel."""

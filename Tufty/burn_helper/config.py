@@ -70,6 +70,28 @@ def save_relay(r):
         return False
 
 
+KEY_FILE = "/state/burn_helper_key.txt"
+
+
+def load_key():
+    """The bridge's key, learned over USB from the bridge, or None. It opens the bridge's sealed answers; it is never sent."""
+    try:
+        with open(KEY_FILE) as f:
+            k = f.read().strip()
+        return k or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def save_key(k):
+    try:
+        with open(KEY_FILE, "w") as f:
+            f.write(k)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def load_portal():
     try:
         with open(NET_FILE) as f:
@@ -116,6 +138,30 @@ def networks():
             seen.append(n[0])
             uniq.append(n)
     return uniq
+
+
+def last_network():
+    """The saved network that connected last time (tried first), or None."""
+    return load_portal().get("last") or None
+
+
+def save_last_network(ssid):
+    d = load_portal()
+    if d.get("last") != ssid:
+        d["last"] = ssid
+        save_portal(d)
+
+
+def paired_bridge():
+    """The id of the bridge this badge belongs to (learnt over the USB cable), or None."""
+    return load_portal().get("paired") or None
+
+
+def save_paired_bridge(bid):
+    d = load_portal()
+    if d.get("paired") != bid:
+        d["paired"] = bid
+        save_portal(d)
 
 
 def _parse_bridge(v):

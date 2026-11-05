@@ -13,6 +13,20 @@
 # once over the walk or run: edit = sword combo on a slime, read = lens of truth, shell = bomb,
 # web = hookshot, spawn = boomerang out and back, fail = knocked back ("OUCH!"), done = item
 # get, prompt = a new quest scroll, arrive = out of a cave, refill = a heart container.
+#
+# The weekly reset (the magic meter refilling) gets louder as it nears, in the stages of
+# scene.week_stage(): a magic-jar clock in the HUD (under 6 h), the caption and a pulsing meter
+# (under 1 h), Navi's warning (under 10 min, at every whole minute), the Triforce building under a
+# ticking count (the last minute), huge flashing digits (the last 10 s) and an item-get under a glowing
+# Triforce (the reset itself). Full-screen stages give way to a waiting session or an activity.
+#
+# When the connection is lost (scene.lost_stage), the hero stands guard, the hearts and the magic
+# meter go grey and the agent and waiting counts read x?; after a minute, the field goes dark and
+# a dialog box says LOST CONTACT, how long, why and what to try, with the usage as of the last data
+# below. When it comes back: THE BRIDGE ANSWERS!
+#
+# The weekly pace (scene.pace_*): a tick on the magic meter where an even pace would leave it, and
+# now and then, while agents work, the caption says the magic runs out early at this pace.
 
 import math
 import figure as F
@@ -69,6 +83,14 @@ STILL = ("read", "shell", "done", "prompt", "arrive", "refill")      # the hero 
 CAPTIONS = {"spawn": "BOOMERANG OUT: A SUBAGENT", "fail": "OUCH! A TOOL CALL FAILED",
             "done": "QUEST COMPLETE!", "prompt": "A NEW QUEST!", "arrive": "A NEW SESSION BEGINS",
             "refill": "HEARTS REFILLED!"}
+# the weekly pace's captions (scene.pace_caption), two lines in turn
+PACE = {"watch": ("AT THIS PACE, THE MAGIC", "RUNS OUT ~%(at)s"),
+        "warn": ("MAGIC RUNS OUT ~%(at)s", "%(early)s BEFORE THE WEEK RESETS"),
+        "eased": ("PACE EASED: MAGIC LASTS", "THE MAGIC LASTS THE WEEK"),
+        "room": ("%(left)d%% OF THE MAGIC LEFT", "THE WEEK RESETS IN %(cd)s")}
+JAR_BLUE = (110, 190, 255)        # the weekly clock and jar: blue, never green or red
+FLAME = (255, 150, 40)            # urgency: orange and gold, with words
+M = 1000000
 SKYBLUE = (86, 180, 233)          # success sparkle (Okabe-Ito sky blue)
 VERMILLION = (213, 94, 0)         # failure (Okabe-Ito vermillion), always with a word
 ORANGE = (245, 160, 90)
@@ -126,6 +148,8 @@ BOOMERANG = ("..OOOO..", ".OLLLOO.", "OLOOOLOO", "OO....OO", "O......O")
 # ocarina = a session is waiting for you to play your part
 OCARINA = ("..BB....", ".BBBBBB.", "BLBBHBBB", "BBHBBBHB", ".BBBHBB.", "..BBBB..")
 FAIRY = ("w...w", "ww.ww", ".wCw.", "ww.ww", "w...w")
+# a magic jar for the weekly clock: outline K, glass B, shine L
+JAR = ("..KK..", "..BB..", ".KBBK.", "KBLBBK", "KBBBBK", "KBBBBK", ".KKKK.")
 HOURGLASS = ("KKKKK", ".KSK.", "..S..", ".KSK.", "KKKKK")
 TREASURE = ("..KKKKKK..", ".KGGGGGGK.", "KGYYWYYYGK", "KKKKKKKKKK", "KBBBGGBBBK", "KBBBKKBBBK", "KBBBBBBBBK",
             "KKKKKKKKKK")
@@ -149,6 +173,10 @@ class Theme(S.Theme):
         S.Theme.__init__(self)
         self.refill_from = 0
         self.last_hearts = None
+        self.wk = None            # the weekly reset's stage this frame (scene.week_stage)
+        self.lost = None          # the connection-lost stage this frame (scene.lost_stage)
+        self.pace_kind = None     # the weekly pace's caption is showing: its kind (scene.pace_caption)
+        self.week_from = 0.35     # the magic meter's level before the reset, to sweep it up from
 
     def build(self):
         pal = gfx.palette(HERO)
@@ -164,7 +192,8 @@ class Theme(S.Theme):
         self.spin = img(F.Pose(lf=(30, 10), lb=(-30, 10), af=(95, 0), ab=(-40, 40), prop="sword fwd"))
 
         self.hearts = gfx.heart_set(RED, DARK_RED, BLACK)
-        self.hearts_grey = gfx.heart_set((120, 120, 120), (60, 60, 60), BLACK)[2]
+        self.hearts_stale = gfx.heart_set((120, 120, 120), (60, 60, 60), BLACK)   # the connection is lost
+        self.hearts_grey = self.hearts_stale[2]
         self.rupee = gfx.sprite(RUPEE, {"G": (40, 200, 72), "g": (140, 240, 140), "W": WHITE})
         self.boomerang = gfx.sprite(BOOMERANG, {"O": (170, 110, 40), "L": (235, 180, 90)})
         self.ocarina = gfx.sprite(OCARINA, {"B": (60, 100, 220), "L": (160, 195, 255), "H": (20, 30, 90)})
@@ -176,6 +205,7 @@ class Theme(S.Theme):
         self.ground = self._ground()
         self.stars = [((i * 53) % 160, 24 + (i * 29) % 40) for i in range(18)]
         self._build_actions(pal)
+        self._build_week()
 
     def _build_actions(self, pal):
         """Poses and props for the activity animations, built once."""
@@ -221,6 +251,19 @@ class Theme(S.Theme):
         self.big_heart = self.hearts[0]
         self.white_heart = gfx.heart_set(WHITE, WHITE, WHITE, WHITE)[0]
         self.fade = hasattr(screen, "alpha")
+
+    def _build_week(self):
+        """Sprites for the weekly-reset stages, built once: the jar and big digits for the last 10 s."""
+        self.jar = gfx.sprite(JAR, {"K": (20, 30, 70), "B": (70, 150, 230), "L": (200, 235, 255)})
+        self.dw, self.dh = 13, 24
+        self.digits = {}
+        for name, c in (("w", WHITE), ("g", GOLD), ("k", (10, 10, 20))):
+            for ch in "0123456789":
+                img = image(self.dw, self.dh)
+                img.font = font.futile
+                img.pen = gfx.rgb(c)
+                img.text(ch, 0, 0)
+                self.digits[(name, ch)] = img
 
     def start_action(self, key, t0, st):
         S.Theme.start_action(self, key, t0, st)
@@ -288,6 +331,11 @@ class Theme(S.Theme):
 
     # ------------------------------------------------------------ render
     def render(self, st, t):
+        self.wk = S.week_stage(st)
+        self.lost = S.lost_stage(st, t)
+        if self.lost == "lost":
+            self.lost_page(st, t)
+            return
         night = st.level == S.SLEEP
         gfx.box(0, 22, 160, 68, SKY)
         self.far.draw(self.scroll)
@@ -309,8 +357,12 @@ class Theme(S.Theme):
             self.draw_navi(st, t)
         self.draw_hud(st, t)
         self.draw_caption(st, t)
+        self.week_overlay(st, t)
 
     def draw_hero(self, st, t):
+        if self.wk == "zero":
+            self.put(self.p_itemget)       # the reset: item get, under the Triforce drawn over it
+            return
         p = self.acting(t)
         if p is not None:
             getattr(self, "act_" + self.action)(st, t, p)
@@ -377,49 +429,128 @@ class Theme(S.Theme):
             st.hearts = self.refill_from if p < 0.45 else min(20, self.refill_from + int((p - 0.45) / 0.4 * 20))
             self.hud(st, t)
             st.hearts = keep
+            self.week_hud(st, t)
             return
+        w = self.wk
+        keep = st.week
+        if w == "zero":
+            # the magic meter sweeps to full as the celebration goes on
+            k = S.week_zero_progress(st) or 0.0
+            st.week = self.week_from + (1.0 - self.week_from) * max(0.0, min(1.0, (k - 0.15) / 0.5))
+        elif st.week is not None:
+            self.week_from = st.week
         self.hud(st, t)
+        st.week = keep
         self.last_hearts = st.hearts
+        self.week_hud(st, t)
+
+    def week_hud(self, st, t):
+        """The weekly clock in the top right in turn with the 5-hour one (faster the nearer it is),
+        and the magic meter calling attention to itself."""
+        w = self.wk
+        if w is None:
+            return
+        beat = 1100 if w == "six" else (750 if w == "hour" else (500 if w == "ten" else 0))
+        if w == "zero" or w == "minute" or w == "ten_s" or (beat and (t // beat) % 2 == 1):
+            cd = gfx.countdown(st.left7)
+            wd = gfx.width(cd, font.sins)
+            gfx.box(74, 0, 86, 9, BLACK)
+            if 158 - wd - 10 >= 76 + gfx.width("-MAGIC-", font.sins):
+                gfx.text("-MAGIC-", 76, -2, JAR_BLUE, font.sins)
+            hot = (w == "ten" or w == "minute" or w == "ten_s") and (t // 250) % 2 == 0
+            gfx.text(cd, 158 - wd, -2, WHITE if hot else JAR_BLUE, font.sins)
+            screen.blit(self.jar, vec2(int(158 - wd - 9), 1))
+        if w != "zero" and st.mode != "week":     # the magic meter calls attention (none in "week" mode)
+            a = int(110 + 120 * (0.5 + 0.5 * math.sin(t / (260.0 if (w == "six" or w == "hour") else 130.0))))
+            screen.pen = color.rgb(GOLD[0], GOLD[1], GOLD[2], a)
+            screen.rectangle(76, 18, 81, 1)
+            screen.rectangle(76, 21, 81, 1)
+            screen.rectangle(76, 19, 1, 2)
+            screen.rectangle(156, 19, 1, 2)
+            if w != "six":
+                screen.pen = color.rgb(GOLD[0], GOLD[1], GOLD[2], a // 2)
+                screen.rectangle(77, 19, 79, 2)
 
     def hud(self, st, t):
+        stale = self.lost is not None         # the connection is lost: the counts are unknown, the meters grey
         gfx.box(0, 0, 160, 22, BLACK)
         screen.blit(self.rupee, vec2(3, 2))
         gfx.text("x%d" % min(st.tools, 9999), 10, -1, WHITE, font.sins)
         screen.blit(self.boomerang, vec2(3, 12))
-        busy = "x%d" % st.agents
+        busy = "x?" if stale else "x%d" % st.agents
         gfx.text(busy, 12, 9, WHITE, font.sins)
         ox = max(30, 12 + gfx.width(busy, font.sins) + 3)    # make room for 3-digit counts
         screen.blit(self.ocarina, vec2(ox, 12))
-        gfx.text("x%d" % st.waiting, ox + 10, 9, WHITE, font.sins)
+        gfx.text("x?" if stale else "x%d" % st.waiting, ox + 10, 9, WHITE, font.sins)
 
-        # time until the hearts refill (the 5-hour window resets)
-        cd = gfx.countdown(st.left5)
+        # time until the hearts refill (the 5-hour window resets, or the week in "week" mode)
+        cd = S.cd_life(st)
         w = gfx.width(cd, font.sins)
         if 158 - w - 10 >= 76 + gfx.width("-LIFE-", font.sins):
             gfx.text("-LIFE-", 76, -2, RED, font.sins)     # dropped when the long final-seconds count needs the room
-        gfx.text(cd, 158 - w, -2, gfx.countdown_color(st.left5, WHITE), font.sins)
+        gfx.text(cd, 158 - w, -2, gfx.countdown_color(S.life_left(st), WHITE), font.sins)
         screen.blit(self.clock, vec2(int(158 - w - 8), 2))
         low = st.hearts is not None and st.hearts <= 4
-        gfx.draw_hearts(self.hearts, st.hearts, 76, 9, blink=low and S.blink(t, 300), unknown=self.hearts_grey)
-        # magic meter under the hearts = weekly budget
-        gfx.meter(77, 19, 79, 2, st.week, (48, 200, 64), (36, 52, 36))
+        if stale:
+            gfx.draw_hearts(self.hearts_stale, st.hearts, 76, 9, unknown=self.hearts_grey)
+            if st.mode != "week":
+                gfx.meter(77, 19, 79, 2, st.week, (130, 130, 130), (44, 44, 44))
+        else:
+            # in "week" mode the hearts likely spent by the reset go dark now and then
+            gfx.draw_hearts(self.hearts, S.icon_units(st, st.hearts, t), 76, 9, blink=low and S.blink(t, 300),
+                            unknown=self.hearts_grey)
+            # magic meter under the hearts = weekly budget, with the pace tick (none in "week" mode,
+            # where the hearts are the week)
+            if st.mode != "week":
+                gfx.meter(77, 19, 79, 2, st.week, (48, 200, 64), (36, 52, 36))
+                S.pace_tick(st, 77, 19, 79, 2)
         if not st.online and S.blink(t, 600):
             gfx.text("?", 62, 4, RED, font.sins)
+        S.draw_accounts(st, t, stale)     # a row for each other Claude account
 
     def draw_caption(self, st, t):
+        if st.online and st.waiting:
+            S.draw_waiting_bar(st, t)     # who is waiting, one name at a time
+            return
         gfx.box(0, 108, 160, 12, BLACK)
         msg = self.caption(st, t)
-        gfx.ctext(gfx.fit(msg, 156, font.sins), 80, 107, WHITE, font.sins)
+        hot = False
+        w = self.wk
+        if w is not None:
+            cd = gfx.countdown(st.left7)
+            full = S.week_takes_screen(st, self.acting(t) is not None)
+            if w == "hour":
+                msg = "MAGIC REFILLS IN " + cd
+            elif w == "ten":
+                msg = "WEEK RESETS IN " + cd
+            elif w == "minute":
+                msg, hot = ("HOLD ON... THE WEEK ENDS SOON" if full else "WEEK RESETS IN " + cd), (t // 250) % 2 == 0
+            elif w == "ten_s":
+                msg, hot = ("MAGIC RETURNS IN %d" % int(st.left7 // M + 1) if full else "WEEK RESETS IN " + cd), \
+                    (t // 250) % 2 == 0
+            elif w == "zero":
+                msg, hot = "MAGIC RESTORED!", True
+        ink = GOLD if hot else WHITE
+        if self.pace_kind and w in (None, "six"):
+            ink = S.pace_ink(self.pace_kind, ink)
+        if self.lost is not None and msg.startswith("CONNECTION LOST"):
+            ink = S.LOST
+        elif S.back_online(st, t):
+            msg, ink = "THE BRIDGE ANSWERS!", S.BACK
+        gfx.ctext(gfx.fit(msg, 156, font.sins), 80, 107, ink, font.sins)
 
     def caption(self, st, t):
+        self.pace_kind = None
         if not st.online:
-            return st.net or "SEARCHING FOR BRIDGE..."
+            return S.lost_caption(st, t) if self.lost else (st.net or "SEARCHING FOR BRIDGE...")
         if self.action in CAPTIONS and self.acting(t) is not None:
             return CAPTIONS[self.action]
-        if st.waiting and (t // 2500) % 2 == 0:
-            return ("1 QUEST NEEDS YOU!" if st.waiting == 1 else "%d QUESTS NEED YOU!" % st.waiting)
+        pc = S.pace_caption(st, t, PACE)
+        if pc:
+            msg, self.pace_kind = pc
+            return msg
         if st.hearts is not None and st.hearts <= 4 and (t // 3000) % 2:
-            return "LOW HEARTS! REFILL IN " + gfx.countdown(st.left5)
+            return "LOW HEARTS! REFILL IN " + gfx.countdown(S.life_left(st))
         tc = S.tier_caption(st, t, "HYPERSPACE JUMP!")
         if tc:
             return tc
@@ -434,6 +565,194 @@ class Theme(S.Theme):
         if lv == S.RUN:
             return "PEGASUS BOOTS! %d AGENTS" % n
         return "IT'S DANGEROUS TO GO ALONE!" if (t // 3000) % 2 == 0 else "%d AGENTS, %d TOOLS/MIN" % (n, st.tpm)
+
+    # ------------------------------------------------------------ the connection lost
+    def lost_page(self, st, t):
+        """A minute without data: the field at night, the hero standing guard with a fairy asking
+        "?", and a dialog box with how long, why and what to try. The usage as of the last data is
+        in the caption, and grey in the HUD."""
+        gfx.box(0, 22, 160, 68, SKY)
+        self.far.draw(self.scroll)
+        self.mid.draw(self.scroll)
+        self.ground.draw(self.scroll)
+        screen.pen = color.rgb(8, 12, 48, 190)
+        screen.rectangle(0, 22, 160, 86)
+        for i, (x, y) in enumerate(self.stars):
+            if (t // 500 + i) % 7:
+                gfx.box(x, y - 2, 1, 1, (220, 220, 255))
+        # the hero, small at the foot of the box, and the fairy circling his head
+        img = self.stand[1] if (t % 3200) < 150 else self.stand[0]
+        gfx.blit(img, 18, 104 - img.height + 2, 1)
+        a = t / 700.0
+        fx = 42 + math.cos(a) * 9
+        fy = 92 + math.sin(a * 1.6) * 2
+        screen.pen = color.rgb(120, 200, 255, 70)
+        screen.shape(shape.circle(fx + 2, fy + 2, 5))
+        gfx.blit(self.fairy, fx, fy, 1, (t // 90) % 2 == 0)
+        gfx.bubble(int(fx) + 2, int(fy) - 1, "?", (24, 24, 48), WHITE, font.sins)
+        # the dialog box: a double white edge, like the game's
+        x0, y0, w, h = 5, 24, 150, 48
+        gfx.box(x0, y0, w, h, BLACK)
+        for k, c in ((0, WHITE), (2, (110, 110, 130))):
+            gfx.box(x0 + k, y0 + k, w - 2 * k, 1, c)
+            gfx.box(x0 + k, y0 + h - 1 - k, w - 2 * k, 1, c)
+            gfx.box(x0 + k, y0 + k, 1, h - 2 * k, c)
+            gfx.box(x0 + w - 1 - k, y0 + k, 1, h - 2 * k, c)
+        tx = x0 + 6
+        gfx.text("LOST CONTACT", tx, y0 + 1, S.LOST, font.sins)
+        gfx.text("NO WORD FOR " + S.lost_for(S.lost_ms(st, t) or 0), tx, y0 + 12, WHITE, font.sins)
+        gfx.text(gfx.fit(S.lost_reason(st), w - 14, font.sins), tx, y0 + 23, WHITE, font.sins)
+        gfx.text(gfx.fit(S.lost_advice(st), w - 18, font.sins), tx, y0 + 34, GOLD, font.sins)
+        if S.blink(t, 600):                 # the box's "more" arrow
+            screen.pen = gfx.rgb(WHITE)
+            screen.triangle(x0 + w - 11, y0 + h - 8, x0 + w - 5, y0 + h - 8, x0 + w - 8, y0 + h - 5)
+        self.hud(st, t)
+        gfx.box(0, 108, 160, 12, BLACK)
+        gfx.ctext(gfx.fit(S.last_usage(st), 156, font.sins), 80, 107, (180, 180, 196), font.sins)
+
+    # ------------------------------------------------------------ the weekly reset, drawn over the scene
+    def week_overlay(self, st, t):
+        w = self.wk
+        if w is None or w == "six" or w == "hour":
+            return
+        if w == "zero":
+            self.over_zero(st, t)
+            return
+        if not S.week_takes_screen(st, self.acting(t) is not None):
+            return                          # a waiting session or an activity has the screen
+        if w == "ten":
+            if S.week_interstitial(st):
+                self.over_ten(st, t)
+        elif w == "minute":
+            self.over_minute(st, t)
+        else:
+            self.over_ten_s(st, t)
+
+    def bubble2(self, x, y, l1, l2, fg, bg):
+        """A two-line speech bubble with its tail at (x, y)."""
+        f = font.sins
+        wd = int(max(gfx.width(l1, f), gfx.width(l2, f))) + 8
+        h = 2 * 11 + 3
+        bx = int(max(1, min(160 - wd - 1, x - wd + 18)))
+        by = int(y - h - 5)
+        gfx.box(bx - 1, by, wd + 2, h, fg)
+        gfx.box(bx, by - 1, wd, h + 2, fg)
+        gfx.box(bx, by, wd, h, bg)
+        gfx.box(x - 1, by + h, 3, 2, bg)
+        gfx.box(x - 1, by + h + 2, 1, 2, fg)
+        gfx.text(l1, bx + 4, by + 1, fg, f)
+        gfx.text(l2, bx + 4, by + 12, (180, 40, 0) if bg == WHITE else fg, f)
+
+    def frame_pulse(self, t, thick, rate):
+        a = int(100 + 130 * (0.5 + 0.5 * math.sin(t / rate)))
+        screen.pen = color.rgb(255, 200, 60, a)
+        screen.rectangle(0, 22, 160, thick)
+        screen.rectangle(0, 108 - thick, 160, thick)
+        screen.rectangle(0, 22, thick, 86)
+        screen.rectangle(160 - thick, 22, thick, 86)
+
+    def over_ten(self, st, t):
+        """Under 10 minutes, at every whole minute: a pulsing gold frame, and Navi flies in."""
+        self.frame_pulse(t, 2, 160.0)
+        a = t / 380.0
+        fx = 112 + math.cos(a) * 14
+        fy = 56 + math.sin(a * 1.7) * 6
+        screen.pen = color.rgb(120, 200, 255, 70)
+        screen.shape(shape.circle(fx + 2, fy + 2, 6))
+        gfx.blit(self.fairy, fx, fy, 1, (t // 90) % 2 == 0)
+        self.bubble2(int(fx) + 2, int(fy) - 1, "HEY! LISTEN!", "WEEK ENDS " + gfx.countdown(st.left7),
+                     (24, 24, 48), WHITE)
+
+    def triforce(self, cx, top, s, h, lit, glow=0.0):
+        """The Triforce: three triangles; lit = how many are filled (0-3), glow 0-1 around them."""
+        pieces = (((cx, top), (cx - s / 2, top + h), (cx + s / 2, top + h)),
+                  ((cx - s / 2, top + h), (cx - s, top + 2 * h), (cx, top + 2 * h)),
+                  ((cx + s / 2, top + h), (cx, top + 2 * h), (cx + s, top + 2 * h)))
+        if glow > 0:
+            for r, al in ((s * 0.95, 40), (s * 0.7, 60)):
+                screen.pen = color.rgb(255, 230, 120, int(al * glow))
+                screen.shape(shape.circle(cx, top + h * 1.2, r))
+        for i in range(3):
+            (x0, y0), (x1, y1), (x2, y2) = pieces[i]
+            if i < lit:
+                screen.pen = gfx.rgb((60, 40, 10))
+                screen.triangle(int(x0), int(y0 - 1), int(x1 - 2), int(y1 + 1), int(x2 + 2), int(y2 + 1))
+                screen.pen = gfx.rgb(GOLD)
+                screen.triangle(int(x0), int(y0 + 1), int(x1), int(y1 - 1), int(x2), int(y2 - 1))
+                screen.pen = gfx.rgb((255, 245, 180))
+                screen.triangle(int(x0), int(y0 + 3), int(x0 - s / 6), int(y0 + h * 0.6), int(x0 + s / 6),
+                                int(y0 + h * 0.6))
+            else:
+                screen.pen = color.rgb(252, 216, 80, 70)
+                screen.triangle(int(x0), int(y0 + 1), int(x1), int(y1 - 1), int(x2), int(y2 - 1))
+
+    def over_minute(self, st, t):
+        """The last minute: the scene dims, the Triforce builds piece by piece, the count ticks."""
+        screen.pen = color.rgb(6, 8, 30, 205)
+        screen.rectangle(0, 22, 160, 86)
+        gfx.ctext("THE WEEK'S MAGIC RETURNS IN", 80, 23, GOLD, font.sins)
+        cd = gfx.countdown(st.left7)
+        screen.font = font.futile
+        x = 80 - gfx.width(cd, font.futile) // 2
+        gfx.text(cd, x + 2, 38, (10, 10, 20), font.futile)
+        gfx.text(cd, x, 36, WHITE, font.futile)
+        sec = st.left7 / float(M)
+        lit = 1 + (sec < 55) + (sec < 48)
+        self.triforce(80, 66, 24, 18, lit, 1.0 if lit == 3 else 0.0)
+        if lit == 3:
+            for i in range(5):
+                q = ((t / 600.0) + i / 5.0) % 1.0
+                self.sparkle(80 + math.cos(i * 1.257 + t / 900.0) * (22 + q * 10),
+                             86 + math.sin(i * 1.257 + t / 900.0) * (14 + q * 6), 2, GOLD, int(255 * (1 - q)))
+        self.frame_pulse(t, 2, 110.0)
+
+    def over_ten_s(self, st, t):
+        """The last ten seconds: huge digits, a white flash on every second."""
+        sec = st.left7 / float(M)
+        screen.pen = color.rgb(40, 14, 0, 215)
+        screen.rectangle(0, 22, 160, 86)
+        n = max(0, min(9, int(sec)))             # the second that is on the clock
+        since = 1.0 - (sec - int(sec))           # how long ago it last changed
+        gfx.ctext("MAGIC RETURNS IN", 80, 23, FLAME, font.sins)
+        c = "g" if n % 2 == 0 else "w"
+        gfx.blit(self.digits[("k", str(n))], 53, 41, 2)
+        gfx.blit(self.digits[(c, str(n))], 50, 38, 2)
+        ms = "%02d" % int((sec - int(sec)) * 100)
+        gfx.text("." + ms, 50 + self.dw * 2 + 6, 62, GOLD if n % 2 == 0 else WHITE, font.futile)
+        gfx.ctext("SECONDS", 80, 94, WHITE, font.sins)
+        flash = max(0.0, 1.0 - since / 0.35)
+        if flash > 0:
+            screen.pen = color.rgb(255, 255, 255, int(190 * flash))
+            screen.rectangle(0, 22, 160, 86)
+        self.frame_pulse(t, 3, 70.0)
+
+    def over_zero(self, st, t):
+        """The reset: a flash, the hero lifts the Triforce, the magic meter fills, sparkles."""
+        k = S.week_zero_progress(st) or 0.0
+        hands = self.p_itemget[1]
+        hx = X0 + (hands["hand_f"][0] + hands["hand_b"][0]) / 2 * SCALE
+        hy = 90 - HIP_Y * SCALE + min(hands["hand_f"][1], hands["hand_b"][1]) * SCALE
+        cx, top = int(hx), int(hy - 34)
+        for i in range(8):
+            a = i * 0.785 + t / 900.0
+            if top + 12 + math.sin(a) * 34 < 24:
+                continue                 # rays that would run up into the HUD are left out
+            screen.pen = color.rgb(252, 216, 80, 55)
+            screen.triangle(cx, top + 12, int(cx + math.cos(a - 0.12) * 34), int(top + 12 + math.sin(a - 0.12) * 34),
+                            int(cx + math.cos(a + 0.12) * 34), int(top + 12 + math.sin(a + 0.12) * 34))
+        self.triforce(cx, top, 16, 12, 3, 1.0)
+        for i in range(6):
+            q = ((t / 500.0) + i / 6.0) % 1.0
+            c = GOLD if i % 2 else SKYBLUE
+            self.sparkle(cx + math.cos(i * 1.047) * (14 + q * 16), top + 12 + math.sin(i * 1.047) * (10 + q * 10),
+                         2, c, int(255 * (1 - q)))
+        bob = int(math.sin(t / 160.0) * 1.5)
+        for ox, oy, c in ((1, 1, (20, 12, 0)), (0, 0, GOLD)):
+            gfx.text("WEEK", 102 + ox, 30 + oy + bob, c, font.badgewaremax)
+            gfx.text("RESET!", 86 + ox, 54 + oy + bob, c, font.badgewaremax)
+        if k < 0.1:
+            screen.pen = color.rgb(255, 255, 255, int(220 * (1 - k / 0.1)))
+            screen.rectangle(0, 22, 160, 86)
 
     # ------------------------------------------------------------ effects
     def sparkle(self, x, y, size, c, a=255):
