@@ -65,19 +65,7 @@ ESITO_USB = 0x15
 ESITO_PASSO = 0x16
 ESITO_NO_SESSIONE = 0x17
 
-ESITO_TESTO = {
-    ESITO_FATTO: "Fatto",
-    ESITO_IN_CORSO: "In corso...",
-    ESITO_ANNULLATO: "Annullato",
-    ESITO_FORMATO: "Messaggio non valido",
-    ESITO_FIRMA: "Firma non valida",
-    ESITO_RIPETUTO: "Messaggio ripetuto",
-    ESITO_TROPPO_LUNGO: "Comando troppo lungo",
-    ESITO_OCCUPATO: "Dongle occupato",
-    ESITO_USB: "USB del PC non pronta",
-    ESITO_PASSO: "Comando non valido",
-    ESITO_NO_SESSIONE: "Sessione non avviata",
-}
+# i testi degli esiti sono nei file di lingua (lang/*.json, chiavi es_XX)
 
 
 def sha256(data):
