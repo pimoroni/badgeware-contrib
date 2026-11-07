@@ -1,0 +1,35 @@
+{
+  "gruppi": [
+    {
+      "nome": "Siti",
+      "comandi": [
+        {"nome": "Pimoroni", "url": "https://shop.pimoroni.com"},
+        {"nome": "Google", "url": "https://www.google.it"},
+        {"nome": "YouTube", "url": "https://www.youtube.com"}
+      ]
+    },
+    {
+      "nome": "Testi",
+      "comandi": [
+        {"nome": "Blocco note: saluto", "apri": "notepad",
+         "testo": "Buongiorno a tutti!\nOggi parliamo di elettronica e programmazione."},
+        {"nome": "Firma email", "testo": "Alex Example\nExample Makerspace"},
+        {"nome": "Prova caratteri", "apri": "notepad",
+         "testo": "àèéìòù @ # [ ] { } € £ ° § \\ | < > ' ? ^ * + - _ = / ( ) ! % & ; : , .\n"}
+      ]
+    },
+    {
+      "nome": "Scorciatoie",
+      "comandi": [
+        {"nome": "Mostra desktop", "tasti": "WIN+D"},
+        {"nome": "Esplora file", "tasti": "WIN+E"},
+        {"nome": "Blocca PC", "tasti": "WIN+L"},
+        {"nome": "Calcolatrice", "passi": [["tasti", "WIN+R"], ["pausa", 500],
+                                           ["testo", "calc"], ["tasti", "INVIO"]]},
+        {"nome": "Volume su", "tasti": "VOLSU VOLSU VOLSU"},
+        {"nome": "Volume giu'", "tasti": "VOLGIU VOLGIU VOLGIU"},
+        {"nome": "Muto", "tasti": "MUTO"}
+      ]
+    }
+  ]
+}
