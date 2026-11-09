@@ -1,34 +1,34 @@
 {
-  "gruppi": [
+  "groups": [
     {
-      "nome": "Siti",
-      "comandi": [
-        {"nome": "Pimoroni", "url": "https://shop.pimoroni.com"},
-        {"nome": "Google", "url": "https://www.google.it"},
-        {"nome": "YouTube", "url": "https://www.youtube.com"}
+      "name": "Websites",
+      "commands": [
+        {"name": "Pimoroni", "url": "https://shop.pimoroni.com"},
+        {"name": "Badgeware", "url": "https://badgewa.re"},
+        {"name": "YouTube", "url": "https://www.youtube.com"}
       ]
     },
     {
-      "nome": "Testi",
-      "comandi": [
-        {"nome": "Blocco note: saluto", "apri": "notepad",
-         "testo": "Buongiorno a tutti!\nOggi parliamo di elettronica e programmazione."},
-        {"nome": "Firma email", "testo": "Alex Example\nExample Makerspace"},
-        {"nome": "Prova caratteri", "apri": "notepad",
-         "testo": "àèéìòù @ # [ ] { } € £ ° § \\ | < > ' ? ^ * + - _ = / ( ) ! % & ; : , .\n"}
+      "name": "Texts",
+      "commands": [
+        {"name": "Notepad: greeting", "open": "notepad",
+         "text": "Good morning everyone!\nToday: electronics and programming."},
+        {"name": "Email signature", "text": "Alex Example\nExample Makerspace"},
+        {"name": "Character test", "open": "notepad",
+         "text": "abc ABC 123 !\"#$%&'()*+,-./:;<=>?@[\\]^_{|}\n"}
       ]
     },
     {
-      "nome": "Scorciatoie",
-      "comandi": [
-        {"nome": "Mostra desktop", "tasti": "WIN+D"},
-        {"nome": "Esplora file", "tasti": "WIN+E"},
-        {"nome": "Blocca PC", "tasti": "WIN+L"},
-        {"nome": "Calcolatrice", "passi": [["tasti", "WIN+R"], ["pausa", 500],
-                                           ["testo", "calc"], ["tasti", "INVIO"]]},
-        {"nome": "Volume su", "tasti": "VOLSU VOLSU VOLSU"},
-        {"nome": "Volume giu'", "tasti": "VOLGIU VOLGIU VOLGIU"},
-        {"nome": "Muto", "tasti": "MUTO"}
+      "name": "Shortcuts",
+      "commands": [
+        {"name": "Show desktop", "keys": "WIN+D"},
+        {"name": "File Explorer", "keys": "WIN+E"},
+        {"name": "Lock PC", "keys": "WIN+L"},
+        {"name": "Calculator", "steps": [["keys", "WIN+R"], ["pause", 500],
+                                         ["text", "calc"], ["keys", "ENTER"]]},
+        {"name": "Volume up", "keys": "VOLUP VOLUP VOLUP"},
+        {"name": "Volume down", "keys": "VOLDOWN VOLDOWN VOLDOWN"},
+        {"name": "Mute", "keys": "MUTE"}
       ]
     }
   ]

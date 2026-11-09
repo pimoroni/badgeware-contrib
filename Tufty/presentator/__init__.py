@@ -10,26 +10,30 @@
 # ESP32-S3 inserito in una porta USB del PC (../../presentator_dongle) si
 # collega al badge e preme i tasti come una normale tastiera USB.
 #
-# Il badge traduce tutto in codici tasto HID (layout italiano, comandi.py) e
-# firma ogni messaggio con la chiave in chiave.txt (protocollo.py): il dongle
-# esegue solo messaggi firmati, nuovi e della sessione in corso.
+# Il badge traduce tutto in codici tasto HID per il layout della tastiera del
+# PC scelto nelle impostazioni (IT, US, UK: comandi.py) e firma ogni messaggio
+# con la chiave in chiave.txt (protocollo.py): il dongle esegue solo messaggi
+# firmati, nuovi e della sessione in corso.
 #
 # File dell'app:
 #   comandi.json   voci del menu "Invia comandi" (modificabile in Disk Mode);
 #                  se manca si usa comandi.example.json
 #   chiave.txt     chiave segreta, generata da presentator_dongle/tools/genera_chiave.py
+#   lang/*.json    testi dell'interfaccia, uno per lingua (lingua.py)
 #
 # Schermate e tasti (la legenda in basso li mostra sempre):
 #   menu           SU/GIU sceglie, B apre
 #   presentazione  C/GIU avanti, A/SU indietro, B nero; tenuti: SU avvia (F5),
 #                  B avvia da qui (Maiusc+F5), GIU fine (Esc), A torna al menu
 #   comandi        SU/GIU scorre, B apre/invia, A torna indietro o annulla
+#   impostazioni   SU/GIU sceglie lingua o tastiera, B cambia, A torna al menu
 #   HOME           esce dall'app (riavvia il badge, gestito dal firmware)
 
 import bluetooth
 from micropython import const
 
 import comandi as C
+import lingua as L
 import protocollo as P
 
 badge.mode(HIRES | VSYNC)
@@ -104,13 +108,14 @@ def leggi_file(nome):
 
 
 def carica_chiave():
+    # -> (chiave, chiave del messaggio d'errore in lang/*.json)
     t = leggi_file("chiave.txt")
     if t is None:
-        return None, "Chiave mancante: copia chiave.txt"
+        return None, "key_missing"
     try:
         return P.leggi_chiave(t), None
     except ValueError:
-        return None, "chiave.txt non valida"
+        return None, "key_invalid"
 
 
 def carica_comandi():
@@ -120,11 +125,11 @@ def carica_comandi():
     if t is None:
         t = leggi_file("comandi.example.json")
     if t is None:
-        return [], "comandi.json mancante"
+        return [], L.t("cmds_missing")
     try:
         return C.carica(t)
     except MemoryError:
-        return [], "comandi.json troppo grande"
+        return [], L.t("cmds_too_big")
 
 
 # --- Bluetooth ----------------------------------------------------------
@@ -255,19 +260,19 @@ class Link:
     def stato(self):
         # -> (colore, testo, lampeggia)
         if self.sessione is None:
-            return ERR_COLOR, errore_chiave, False
+            return ERR_COLOR, L.t(errore_chiave), False
         if self.conn is None:
-            return WAIT_COLOR, "In attesa del dongle...", True
+            return WAIT_COLOR, L.t("st_waiting"), True
         if self.hello is None:
-            return WAIT_COLOR, "Dongle collegato, avvio sessione...", True
+            return WAIT_COLOR, L.t("st_session"), True
         versione, impronta = self.hello
         if versione != P.VERSIONE:
-            return ERR_COLOR, "Versione dongle diversa (v%d)" % versione, False
+            return ERR_COLOR, L.t("st_version", versione), False
         if impronta != self.sessione.impronta:
-            return ERR_COLOR, "Chiave diversa dal dongle", False
+            return ERR_COLOR, L.t("st_wrong_key"), False
         if not self.usb_ready:
-            return WAIT_COLOR, "Dongle OK, USB del PC non pronta", False
-        return OK_COLOR, "Dongle pronto", False
+            return WAIT_COLOR, L.t("st_usb"), False
+        return OK_COLOR, L.t("st_ready"), False
 
     def close(self):
         try:
@@ -276,17 +281,25 @@ class Link:
             pass
 
 
+# impostazioni salvate: lingua dei testi e layout della tastiera del PC
+impostazioni = {"lingua": L.PREDEFINITA, "layout": "us"}
+State.load("presentator", impostazioni)
+impostazioni["lingua"] = L.carica(impostazioni["lingua"])
+impostazioni["layout"] = C.imposta_layout(impostazioni["layout"])
+LINGUE = L.disponibili()
+
 chiave, errore_chiave = carica_chiave()
 link = Link(chiave)
 gruppi, errore_comandi = carica_comandi()
 
 # --- stato dell'interfaccia -----------------------------------------------
 
-MENU, PRES, GRUPPI, VOCI = "menu", "pres", "gruppi", "voci"
+MENU, PRES, GRUPPI, VOCI, IMPOST = "menu", "pres", "gruppi", "voci", "impost"
 schermata = MENU
 sel_menu = 0
 sel_gruppo = 0
 sel_voce = 0
+sel_impost = 0
 
 # presentazione (solo lato badge, indicativa)
 slide = 1
@@ -329,12 +342,12 @@ def vai(nuova):
 
 def motivo_non_pronto():
     colore, testo, _ = link.stato()
-    return testo if colore != OK_COLOR else "Dongle occupato"
+    return testo if colore != OK_COLOR else L.t("busy")
 
 
 def invia_presentazione(nome, etichetta):
     if attivo is not None:
-        toast("Attendi la fine del comando", WAIT_COLOR)
+        toast(L.t("wait_cmd"), WAIT_COLOR)
         return False
     contatore = link.invia(P.TIPO_MACRO, C.PRESENTAZIONE[nome])
     if contatore is None:
@@ -350,7 +363,7 @@ def invia_presentazione(nome, etichetta):
 def invia_voce(voce):
     global attivo
     if voce["errore"]:
-        toast("Voce non valida, vedi comandi.json", ERR_COLOR)
+        toast(L.t("item_invalid"), ERR_COLOR)
         return
     if attivo is not None:
         return
@@ -369,7 +382,7 @@ def annulla_voce():
         # il dongle scarta il messaggio incompleto al prossimo inizio
         link.interrompi_invio()
         attivo = None
-        toast("Annullato", WAIT_COLOR)
+        toast(L.t("cancelled"), WAIT_COLOR)
         return
     link.invia(P.TIPO_ANNULLA)
     attivo["fase"] = "annullo"
@@ -380,16 +393,19 @@ def gestisci_esiti():
     if attivo is not None:
         if link.conn is None:
             attivo = None
-            toast("Dongle scollegato", ERR_COLOR)
+            toast(L.t("disconnected"), ERR_COLOR)
         elif attivo["fase"] == "invio" and not link.in_invio():
             attivo["fase"] = "attesa"
             attivo["t"] = badge.ticks
         elif attivo["fase"] == "attesa" and badge.ticks - attivo["t"] > TIMEOUT_RISPOSTA_MS:
             attivo = None
-            toast("Nessuna risposta dal dongle", ERR_COLOR)
+            toast(L.t("no_answer"), ERR_COLOR)
     while link.esiti:
         contatore, esito = link.esiti.pop(0)
-        testo = P.ESITO_TESTO.get(esito, "Errore 0x%02x" % esito)
+        chiave_esito = "es_%02x" % esito
+        testo = L.t(chiave_esito)
+        if testo == chiave_esito:  # codice senza testo nel file di lingua
+            testo = L.t("error_code", esito)
         if attivo is not None and contatore == attivo["contatore"]:
             if esito == P.ESITO_IN_CORSO:
                 attivo["fase"] = "esecuzione"
@@ -447,13 +463,35 @@ def muovi(sel, n):
 
 
 def tasti_menu():
-    global sel_menu, gruppi, errore_comandi
-    sel_menu = muovi(sel_menu, 2)
+    global sel_menu
+    sel_menu = muovi(sel_menu, 3)
     if badge.pressed(BUTTON_B) or badge.pressed(BUTTON_C):
-        if sel_menu == 0:
-            vai(PRES)
-        else:
-            vai(GRUPPI)
+        vai((PRES, GRUPPI, IMPOST)[sel_menu])
+
+
+def cambia_impostazione(quale):
+    # B nelle impostazioni: passa al valore successivo e lo salva subito
+    global gruppi, errore_comandi
+    if quale == 0:
+        codici = [c for c, _ in LINGUE]
+        i = codici.index(impostazioni["lingua"]) if impostazioni["lingua"] in codici else -1
+        impostazioni["lingua"] = L.carica(codici[(i + 1) % len(codici)])
+    else:
+        i = C.LAYOUTS.index(impostazioni["layout"])
+        impostazioni["layout"] = C.imposta_layout(C.LAYOUTS[(i + 1) % len(C.LAYOUTS)])
+    State.modify("presentator", {"lingua": impostazioni["lingua"], "layout": impostazioni["layout"]})
+    # ricompila i comandi: messaggi nella nuova lingua, tasti del nuovo layout
+    gruppi, errore_comandi = carica_comandi()
+
+
+def tasti_impostazioni():
+    global sel_impost
+    if badge.pressed(BUTTON_A):
+        vai(MENU)
+        return
+    sel_impost = muovi(sel_impost, 2)
+    if badge.pressed(BUTTON_B):
+        cambia_impostazione(sel_impost)
 
 
 def tasti_pres():
@@ -477,10 +515,10 @@ def tasti_pres():
     if p:
         azioni.append("nero" if p == "breve" else "avvio_qui")
 
-    etichette_pres = {"avanti": "Avanti", "indietro": "Indietro", "avvio": "Avvio (F5)",
-                      "avvio_qui": "Avvio da qui", "fine": "Fine (Esc)", "nero": "Schermo nero"}
+    etichette_pres = {"avanti": "pa_next", "indietro": "pa_prev", "avvio": "pa_start",
+                      "avvio_qui": "pa_start_here", "fine": "pa_end", "nero": "pa_black"}
     for a in azioni:
-        if not invia_presentazione(a, etichette_pres[a]):
+        if not invia_presentazione(a, L.t(etichette_pres[a])):
             continue
         if a == "avanti":
             slide += 1
@@ -513,7 +551,7 @@ def tasti_gruppi():
         if badge.pressed(BUTTON_B):
             gruppi, errore_comandi = carica_comandi()
             sel_gruppo = 0
-            toast("File ricaricato" if not errore_comandi else "Ancora errori", WAIT_COLOR)
+            toast(L.t("reloaded") if not errore_comandi else L.t("still_errors"), WAIT_COLOR)
         return
     sel_gruppo = muovi(sel_gruppo, len(gruppi))
     if badge.pressed(BUTTON_B):
@@ -573,7 +611,7 @@ def disegna_batteria(x_right, y):
     level = badge.battery_level()
     usb = badge.usb_connected()
     if usb:
-        label = "USB" if not badge.is_charging() else "carica"
+        label = "USB" if not badge.is_charging() else L.t("batt_charging")
         col = OK_COLOR
     else:
         label = "%d%%" % level
@@ -593,14 +631,15 @@ def disegna_batteria(x_right, y):
     testo_destra(label, bx - 6, y - 2, FONT_TITOLO)
 
 
-TITOLI = {MENU: "PRESENTATOR", PRES: "PRESENTAZIONE", GRUPPI: "INVIA COMANDI"}
+TITOLI = {MENU: "title_menu", PRES: "title_pres", GRUPPI: "title_groups", IMPOST: "title_settings"}
 
 
 def disegna_testata():
     pannello(8, HEADER_Y, W - 16, HEADER_H, 10, PANEL_COLOR)
-    titolo = TITOLI.get(schermata)
     if schermata == VOCI:
-        titolo = taglia("COMANDI > " + C.per_schermo(gruppi[sel_gruppo]["nome"]), 190, FONT_TITOLO)
+        titolo = taglia(L.t("title_items", gruppi[sel_gruppo]["nome"]), 190, FONT_TITOLO)
+    else:
+        titolo = L.t(TITOLI[schermata])
     screen.pen = TEXT_COLOR
     testo(titolo, 18, HEADER_Y + 7, FONT_TITOLO)
     disegna_batteria(W - 18, HEADER_Y + 7)
@@ -636,18 +675,26 @@ def altezza_legenda(voci):
 
 def legenda():
     # tasti della schermata corrente: (tasto, azione, azione_tenuto o None)
+    t = L.t
     if schermata == MENU:
-        return [("SU/GIU", "Scegli", None), ("B", "Apri", None), ("HOME", "Esci app", None)]
+        return [(t("btn_updown"), t("lg_choose"), None), ("B", t("lg_open"), None),
+                ("HOME", t("lg_exit"), None)]
     if schermata == PRES:
-        return [("A", "Indietro", "Menu"), ("B", "Nero", "Da qui"), ("C", "Avanti", None),
-                ("SU", "Indietro", "Avvia"), ("GIU", "Avanti", "Fine")]
+        return [("A", t("lg_back"), t("lg_menu")), ("B", t("lg_black"), t("lg_here")),
+                ("C", t("lg_next"), None),
+                (t("btn_up"), t("lg_back"), t("lg_start")), (t("btn_down"), t("lg_next"), t("lg_end"))]
+    if schermata == IMPOST:
+        return [(t("btn_updown"), t("lg_choose"), None), ("B", t("lg_change"), None),
+                ("A", t("lg_menu"), None)]
     if schermata == GRUPPI:
         if errore_comandi:
-            return [("A", "Menu", None), ("B", "Ricarica", None)]
-        return [("SU/GIU", "Scorri", None), ("B", "Apri gruppo", None), ("A", "Menu", None)]
+            return [("A", t("lg_menu"), None), ("B", t("lg_reload"), None)]
+        return [(t("btn_updown"), t("lg_scroll"), None), ("B", t("lg_open_group"), None),
+                ("A", t("lg_menu"), None)]
     if attivo is not None:
-        return [("A", "Annulla", None)]
-    return [("SU/GIU", "Scorri", None), ("B", "Invia al PC", None), ("A", "Gruppi", None)]
+        return [("A", t("lg_cancel"), None)]
+    return [(t("btn_updown"), t("lg_scroll"), None), ("B", t("lg_send"), None),
+            ("A", t("lg_groups"), None)]
 
 
 def disegna_legenda(voci):
@@ -666,7 +713,7 @@ def disegna_voce_legenda(x, y, col_w, tasto, azione, tenuto):
     testo(taglia(azione, col_w - w - 8, FONT_PICCOLO), x + w + 4, y + 2, FONT_PICCOLO)
     if tenuto:
         screen.pen = DIM_TEXT_COLOR
-        testo(taglia("tieni: " + tenuto, col_w - 4, FONT_PICCOLO), x + 2, y + CHIP_H + 2, FONT_PICCOLO)
+        testo(taglia(L.t("lg_hold", tenuto), col_w - 4, FONT_PICCOLO), x + 2, y + CHIP_H + 2, FONT_PICCOLO)
 
 
 def disegna_toast():
@@ -674,7 +721,7 @@ def disegna_toast():
         return
     if schermata == PRES:
         # in alto al centro, tra le scritte SLIDE e TEMPO
-        msg = taglia(C.per_schermo(toast_text), W - 150, FONT_TITOLO)
+        msg = taglia(toast_text, W - 150, FONT_TITOLO)
         w = larghezza(msg, FONT_TITOLO) + 24
         pannello((W - w) // 2, BODY_Y + 4, w, 26, 8, BG_COLOR)
         screen.pen = toast_color
@@ -685,7 +732,7 @@ def disegna_toast():
     screen.pen = BG_COLOR
     screen.shape(shape.rectangle(8, y, W - 16, 22))  # fino alla legenda
     screen.pen = toast_color
-    testo_centro(taglia(C.per_schermo(toast_text), W - 40, FONT_TITOLO), y + 1, FONT_TITOLO)
+    testo_centro(taglia(toast_text, W - 40, FONT_TITOLO), y + 1, FONT_TITOLO)
 
 
 def disegna_lista(righe, sel, y0, n_visibili, alt=20):
@@ -702,7 +749,7 @@ def disegna_lista(righe, sel, y0, n_visibili, alt=20):
         if i == sel:
             pannello(12, y, W - 24, alt - 2, 6, SEL_COLOR)
         screen.pen = col
-        testo(taglia(C.per_schermo(msg), W - 60, FONT_TITOLO), 22, y + 1, FONT_TITOLO)
+        testo(taglia(msg, W - 60, FONT_TITOLO), 22, y + 1, FONT_TITOLO)
     screen.pen = DIM_TEXT_COLOR
     if primo > 0:
         testo("^", W - 26, y0 + 1, FONT_TITOLO)
@@ -711,12 +758,37 @@ def disegna_lista(righe, sel, y0, n_visibili, alt=20):
 
 
 def disegna_menu():
-    voci = ("Gestisci presentazione", "Invia comandi")
+    voci = (L.t("menu_pres"), L.t("menu_cmds"), L.t("menu_settings"))
     for i, v in enumerate(voci):
-        y = BODY_Y + 8 + i * 40
-        pannello(12, y, W - 24, 34, 8, SEL_COLOR if i == sel_menu else PANEL_COLOR)
+        y = BODY_Y + 6 + i * 38
+        pannello(12, y, W - 24, 32, 8, SEL_COLOR if i == sel_menu else PANEL_COLOR)
         screen.pen = TEXT_COLOR if i == sel_menu else DIM_TEXT_COLOR
-        testo("%d) %s" % (i + 1, v), 26, y + 9, FONT_TITOLO, 1)
+        testo("%d) %s" % (i + 1, v), 26, y + 8, FONT_TITOLO, 1)
+    # lingua e tastiera correnti, accanto alla voce delle impostazioni
+    screen.pen = ACCENT_COLOR
+    testo_destra("%s / %s" % (impostazioni["lingua"].upper(), impostazioni["layout"].upper()),
+                 W - 26, BODY_Y + 6 + 2 * 38 + 8, FONT_TITOLO)
+
+
+def nome_lingua(codice):
+    for c, n in LINGUE:
+        if c == codice:
+            return n
+    return codice
+
+
+def disegna_impostazioni():
+    righe = ((L.t("set_language"), nome_lingua(impostazioni["lingua"]), L.t("set_hint_language")),
+             (L.t("set_layout"), L.t("lay_" + impostazioni["layout"]), L.t("set_hint_layout")))
+    for i, (etichetta, valore, _) in enumerate(righe):
+        y = BODY_Y + 6 + i * 44
+        pannello(12, y, W - 24, 38, 8, SEL_COLOR if i == sel_impost else PANEL_COLOR)
+        screen.pen = TEXT_COLOR if i == sel_impost else DIM_TEXT_COLOR
+        testo(etichetta, 24, y + 11, FONT_TITOLO)
+        screen.pen = ACCENT_COLOR
+        testo_destra(valore, W - 24, y + 11, FONT_TITOLO)
+    screen.pen = DIM_TEXT_COLOR
+    testo(taglia(righe[sel_impost][2], W - 40), 20, BODY_Y + BODY_H - 12)
 
 
 def fmt_elapsed(ms):
@@ -734,13 +806,13 @@ def disegna_pres():
     fondo = BODY_Y + alt - 6  # i numeri grandi poggiano qui, dentro il pannello
     if black:
         screen.pen = TEXT_COLOR
-        testo_centro("SCHERMO NERO", BODY_Y + 30, FONT_TITOLO, 3)  # sotto i messaggi
+        testo_centro(L.t("black_title"), BODY_Y + 30, FONT_TITOLO, 3)  # sotto i messaggi
         screen.pen = DIM_TEXT_COLOR
-        testo_centro("premi B per ripristinare", fondo - 10)
+        testo_centro(L.t("black_hint"), fondo - 10)
     else:
         screen.pen = DIM_TEXT_COLOR
-        testo("SLIDE", 24, BODY_Y + 8)
-        testo_destra("TEMPO", W - 24, BODY_Y + 8)
+        testo(L.t("slide"), 24, BODY_Y + 8)
+        testo_destra(L.t("time"), W - 24, BODY_Y + 8)
         screen.pen = TEXT_COLOR
         testo(str(slide), 24, fondo - FONT_TITOLO.height * 5, FONT_TITOLO, 5)
         if show_running:
@@ -754,12 +826,12 @@ def disegna_pres():
 
 def disegna_errore_comandi():
     screen.pen = ERR_COLOR
-    testo("Errore in comandi.json", 20, BODY_Y + 8, FONT_TITOLO)
+    testo(L.t("cmds_error_title"), 20, BODY_Y + 8, FONT_TITOLO)
     screen.pen = TEXT_COLOR
     screen.font = FONT_TESTO
-    screen.text(C.per_schermo(errore_comandi), rect(20, BODY_Y + 30, W - 40, 60), 1)
+    screen.text(errore_comandi, rect(20, BODY_Y + 30, W - 40, 60), 1)
     screen.pen = DIM_TEXT_COLOR
-    testo("Correggi il file in Disk Mode", 20, BODY_Y + 96)
+    testo(L.t("cmds_error_hint"), 20, BODY_Y + 96)
 
 
 def disegna_gruppi():
@@ -774,13 +846,13 @@ def disegna_voci():
     voci = gruppi[sel_gruppo]["comandi"]
     if attivo is not None:
         # comando in corso: al posto della lista, un riquadro con fase e nome
-        fase = {"invio": "Invio al dongle...", "attesa": "Invio al dongle...",
-                "esecuzione": "Scrittura sul PC...", "annullo": "Annullamento..."}[attivo["fase"]]
+        fase = L.t({"invio": "ph_send", "attesa": "ph_send",
+                    "esecuzione": "ph_run", "annullo": "ph_cancel"}[attivo["fase"]])
         pannello(8, BODY_Y, W - 16, BODY_H - 4, 12, PANEL_COLOR)
         screen.pen = WAIT_COLOR
         testo_centro(fase, BODY_Y + BODY_H // 2 - 26, FONT_TITOLO, 2)
         screen.pen = TEXT_COLOR
-        testo_centro(taglia(C.per_schermo(attivo["nome"]), W - 60, FONT_TITOLO),
+        testo_centro(taglia(attivo["nome"], W - 60, FONT_TITOLO),
                      BODY_Y + BODY_H // 2 + 8, FONT_TITOLO)
         return
     righe = [(v["nome"], ERR_COLOR if v["errore"] else TEXT_COLOR) for v in voci]
@@ -790,11 +862,11 @@ def disegna_voci():
         v = voci[sel_voce]
         if v["errore"]:
             screen.pen = ERR_COLOR
-            info = "Errore: " + v["errore"]
+            info = L.t("item_error", v["errore"])
         else:
             screen.pen = DIM_TEXT_COLOR
             info = v["info"]
-        testo(taglia(C.per_schermo(info), W - 40), 20, BODY_Y + BODY_H - 12)
+        testo(taglia(info, W - 40), 20, BODY_Y + BODY_H - 12)
 
 
 def update():
@@ -807,6 +879,8 @@ def update():
         tasti_pres()
     elif schermata == GRUPPI:
         tasti_gruppi()
+    elif schermata == IMPOST:
+        tasti_impostazioni()
     else:
         tasti_voci()
 
@@ -823,6 +897,8 @@ def update():
         disegna_pres()
     elif schermata == GRUPPI:
         disegna_gruppi()
+    elif schermata == IMPOST:
+        disegna_impostazioni()
     else:
         disegna_voci()
     disegna_legenda(voci_legenda)
