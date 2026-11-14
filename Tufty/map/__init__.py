@@ -113,8 +113,7 @@ def calc_day_night_latitude(longitude, dec):
             return 90.0
         if cos_lat < 0:
             return -90.0
-        else:
-            return 0
+        return 0
 
 
 load_coastlines()
