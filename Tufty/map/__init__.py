@@ -111,7 +111,7 @@ def calc_day_night_latitude(longitude, dec):
     except ZeroDivisionError:
         if cos_lat > 0:
             return 90.0
-        elif cos_lat < 0:
+        if cos_lat < 0:
             return -90.0
         else:
             return 0
